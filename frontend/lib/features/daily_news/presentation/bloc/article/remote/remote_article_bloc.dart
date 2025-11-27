@@ -13,16 +13,18 @@ class RemoteArticlesBloc extends Bloc<RemoteArticlesEvent,RemoteArticlesState> {
   }
 
 
-  void onGetArticles(GetArticles event, Emitter < RemoteArticlesState > emit) async {
+  void onGetArticles(GetArticles event, Emitter<RemoteArticlesState> emit) async {
     final dataState = await _getArticleUseCase();
 
-    if (dataState is DataSuccess && dataState.data!.isNotEmpty) {
+    // CAMBIO: Si es éxito y hay datos, O si es éxito pero la lista está vacía (para quitar el loading)
+    if (dataState is DataSuccess && dataState.data != null) {
       emit(
         RemoteArticlesDone(dataState.data!)
       );
     }
     
     if (dataState is DataFailed) {
+      print(dataState.error); // Debug: Imprimir error en consola
       emit(
         RemoteArticlesError(dataState.error!)
       );

@@ -19,7 +19,9 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<AppDatabase>(database);
   
   // Dio
-  sl.registerSingleton<Dio>(Dio());
+  final dio = Dio();
+  dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
+  sl.registerSingleton<Dio>(dio);
 
   // Dependencies
   sl.registerSingleton<NewsApiService>(NewsApiService(sl()));
