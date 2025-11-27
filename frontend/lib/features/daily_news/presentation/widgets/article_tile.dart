@@ -7,25 +7,31 @@ import '../../domain/entities/article.dart';
 
 class ArticleWidget extends HookWidget {
   final ArticleEntity? article;
-  final bool isSavedInitially; // NUEVO: Estado inicial
+  final bool isSavedInitially;
   final void Function(ArticleEntity article)? onArticlePressed;
   final void Function(ArticleEntity article, bool isSaved)? onBookmarkPressed;
   final void Function(ArticleEntity article)? onLikePressed;
+  final void Function(ArticleEntity article)? onRemove;
+  final bool? isRemovable;
 
   const ArticleWidget({
     Key? key,
     this.article,
     this.onArticlePressed,
-    this.isSavedInitially = false, // Por defecto no guardado
+    this.isSavedInitially = false,
     this.onBookmarkPressed,
     this.onLikePressed,
+    this.onRemove,
+    this.isRemovable = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // HOOKS: Estados locales para reactividad inmediata
     final isLiked = useState(false);
-    // Inicializamos el estado con lo que nos diga el padre (ej: pestaña Saved)
     final isSaved = useState(isSavedInitially);
+    // Inicializamos el contador con el valor del modelo (o 0 si es nulo)
+    final likeCount = useState(article!.likesCount ?? 0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -37,7 +43,7 @@ class ArticleWidget extends HookWidget {
         child: Row(
           children: [
             _buildImage(context),
-            _buildTitleAndDescription(isLiked, isSaved),
+            _buildTitleAndDescription(isLiked, isSaved, likeCount),
           ],
         ),
       ),
@@ -80,7 +86,7 @@ class ArticleWidget extends HookWidget {
           child: Container(
             width: MediaQuery.of(context).size.width / 3,
             height: double.maxFinite,
-            child: const Icon(Icons.error), // Corrección del const
+            child: const Icon(Icons.error),
             decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
           ),
         ),
@@ -89,7 +95,10 @@ class ArticleWidget extends HookWidget {
   }
 
   Widget _buildTitleAndDescription(
-      ValueNotifier<bool> isLiked, ValueNotifier<bool> isSaved) {
+      ValueNotifier<bool> isLiked, 
+      ValueNotifier<bool> isSaved,
+      ValueNotifier<int> likeCount) {
+    
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 7),
@@ -97,6 +106,7 @@ class ArticleWidget extends HookWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // TÍTULO
             Text(
               article!.title ?? '',
               maxLines: 3,
@@ -108,6 +118,8 @@ class ArticleWidget extends HookWidget {
                 color: Colors.black87,
               ),
             ),
+
+            // DESCRIPCIÓN
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -118,9 +130,12 @@ class ArticleWidget extends HookWidget {
                 ),
               ),
             ),
+
+            // BARRA DE ACCIÓN
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // FECHA
                 Row(
                   children: [
                     const Icon(Ionicons.time_outline, size: 14, color: Colors.grey),
@@ -131,28 +146,54 @@ class ArticleWidget extends HookWidget {
                     ),
                   ],
                 ),
-                // Botones siempre visibles (Unificados)
-                Row(
-                  children: [
-                    _buildActionButton(
-                      icon: isLiked.value ? Ionicons.thumbs_up : Ionicons.thumbs_up_outline,
-                      color: isLiked.value ? Colors.blue : Colors.black54,
-                      onTap: () {
-                        isLiked.value = !isLiked.value;
-                        onLikePressed?.call(article!);
-                      },
-                    ),
-                    _buildActionButton(
-                      icon: isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
-                      color: isSaved.value ? Colors.orange : Colors.black54,
-                      paddingLeft: 12,
-                      onTap: () {
-                        isSaved.value = !isSaved.value;
-                        onBookmarkPressed?.call(article!, isSaved.value);
-                      },
-                    ),
-                  ],
-                ),
+
+                // BOTONES
+                if (!isRemovable!)
+                  Row(
+                    children: [
+                      // Contador Visual
+                      Text(
+                        '${likeCount.value}', 
+                        style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Botón LIKE
+                      _buildActionButton(
+                        icon: isLiked.value ? Ionicons.thumbs_up : Ionicons.thumbs_up_outline,
+                        color: isLiked.value ? Colors.blue : Colors.black54,
+                        onTap: () {
+                          // Lógica de contador
+                          if (isLiked.value) {
+                            likeCount.value--;
+                          } else {
+                            likeCount.value++;
+                          }
+                          isLiked.value = !isLiked.value; // Switch
+                          onLikePressed?.call(article!);
+                        },
+                      ),
+
+                      // Botón GUARDAR
+                      _buildActionButton(
+                        icon: isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
+                        color: isSaved.value ? Colors.orange : Colors.black54,
+                        paddingLeft: 12,
+                        onTap: () {
+                          isSaved.value = !isSaved.value; // Switch
+                          onBookmarkPressed?.call(article!, isSaved.value);
+                        },
+                      ),
+                    ],
+                  ),
+                
+                // Botón BORRAR (Vista legacy/Saved)
+                if (isRemovable!)
+                  _buildActionButton(
+                    icon: Ionicons.trash_outline,
+                    color: Colors.red,
+                    onTap: () => onRemove?.call(article!),
+                  ),
               ],
             ),
           ],

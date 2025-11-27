@@ -9,7 +9,7 @@ class ArticleEntity extends Equatable {
   final String? urlToImage;
   final String? publishedAt;
   final String? content;
-  final int? likesCount; // NUEVO CAMPO
+  final int? likesCount; // NUEVO
 
   const ArticleEntity({
     this.id,
@@ -20,7 +20,7 @@ class ArticleEntity extends Equatable {
     this.urlToImage,
     this.publishedAt,
     this.content,
-    this.likesCount, // NUEVO EN CONSTRUCTOR
+    this.likesCount, // NUEVO
   });
 
   @override
@@ -34,7 +34,7 @@ class ArticleEntity extends Equatable {
       urlToImage,
       publishedAt,
       content,
-      likesCount, // NUEVO PARA COMPARACIÓN
+      likesCount, // NUEVO
     ];
   }
 }

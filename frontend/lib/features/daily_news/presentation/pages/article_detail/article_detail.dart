@@ -14,14 +14,14 @@ class ArticleDetailsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Estado local para el botón flotante (Switch visual)
-    // Nota: Por ahora inicia en 'false' (azul) visualmente al entrar, 
-    // hasta que tengamos la persistencia en el objeto Article (Fase 4).
+    // HOOKS: Estados locales
     final isSaved = useState(false);
+    final isLiked = useState(false);
+    final likeCount = useState(article!.likesCount ?? 0);
 
     return Scaffold(
       appBar: _buildAppBar(context),
-      body: _buildBody(),
+      body: _buildBody(context, isLiked, likeCount),
       floatingActionButton: _buildFloatingActionButton(context, isSaved),
     );
   }
@@ -38,11 +38,11 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount) {
     return SingleChildScrollView(
       child: Column(
         children: [
-          _buildArticleTitleAndDate(),
+          _buildArticleTitleAndDate(context, isLiked, likeCount),
           _buildArticleImage(),
           _buildArticleDescription(),
         ],
@@ -50,13 +50,13 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  Widget _buildArticleTitleAndDate() {
+  Widget _buildArticleTitleAndDate(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title
+          // TITLE
           Text(
             article!.title!,
             style: const TextStyle(
@@ -66,14 +66,54 @@ class ArticleDetailsView extends HookWidget {
           ),
 
           const SizedBox(height: 14),
-          // DateTime
+          
+          // ROW: FECHA + LIKES
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Ionicons.time_outline, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                article!.publishedAt!,
-                style: const TextStyle(fontSize: 12),
+              // FECHA
+              Row(
+                children: [
+                  const Icon(Ionicons.time_outline, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    article!.publishedAt!,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+              
+              // LIKES (Interactivo)
+              Row(
+                children: [
+                  Text(
+                    '${likeCount.value} Likes',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      if (isLiked.value) {
+                        likeCount.value--;
+                      } else {
+                        likeCount.value++;
+                      }
+                      isLiked.value = !isLiked.value;
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Like actualizado 👍"),
+                          duration: Duration(milliseconds: 300),
+                        ),
+                      );
+                    },
+                    child: Icon(
+                      isLiked.value ? Ionicons.thumbs_up : Ionicons.thumbs_up_outline,
+                      color: isLiked.value ? Colors.blue : Colors.black,
+                      size: 24,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -91,7 +131,7 @@ class ArticleDetailsView extends HookWidget {
         article!.urlToImage!,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          // CORREGIDO: 'const' movido al hijo, Container no puede ser const
+          // CORRECCIÓN: Container no es const
           return Container(
               height: 250,
               color: Colors.grey,
@@ -111,36 +151,25 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
+  // BOTÓN GUARDAR (FAB)
   Widget _buildFloatingActionButton(BuildContext context, ValueNotifier<bool> isSaved) {
     return FloatingActionButton(
-      // Lógica de Color: Naranja si está guardado, Azul si no
       backgroundColor: isSaved.value ? Colors.orange : Colors.blueAccent,
       onPressed: () {
         if (isSaved.value) {
-          // CASO 1: Si ya estaba marcado -> ELIMINAR
           context.read<LocalArticleBloc>().add(RemoveArticle(article!));
-          isSaved.value = false; // Actualizamos switch visual
-          
+          isSaved.value = false;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Eliminado de favoritos'),
-              duration: Duration(milliseconds: 500),
-            ),
+            const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
           );
         } else {
-          // CASO 2: Si no estaba marcado -> GUARDAR
           context.read<LocalArticleBloc>().add(SaveArticle(article!));
-          isSaved.value = true; // Actualizamos switch visual
-          
+          isSaved.value = true;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Guardado en favoritos'),
-              duration: Duration(milliseconds: 500),
-            ),
+            const SnackBar(content: Text('Guardado en favoritos'), duration: Duration(milliseconds: 500)),
           );
         }
       },
-      // Lógica de Icono: Relleno vs Borde
       child: Icon(
         isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
         color: Colors.white,

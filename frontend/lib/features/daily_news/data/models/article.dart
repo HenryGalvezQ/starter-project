@@ -13,7 +13,7 @@ class ArticleModel extends ArticleEntity {
     String? urlToImage,
     String? publishedAt,
     String? content,
-    int? likesCount, // NUEVO CAMPO
+    int? likesCount, // NUEVO
   }): super(
     id: id,
     author: author,
@@ -23,7 +23,7 @@ class ArticleModel extends ArticleEntity {
     urlToImage: urlToImage,
     publishedAt: publishedAt,
     content: content,
-    likesCount: likesCount, // NUEVO CAMPO
+    likesCount: likesCount, // NUEVO
   );
 
   factory ArticleModel.fromJson(Map < String, dynamic > map) {
@@ -35,7 +35,7 @@ class ArticleModel extends ArticleEntity {
       urlToImage: map['urlToImage'] != null && map['urlToImage'] != "" ? map['urlToImage'] : kDefaultImage,
       publishedAt: map['publishedAt'] ?? "",
       content: map['content'] ?? "",
-      // Si la API no trae likes, asumimos 0 por defecto para la UI
+      // Mapeo seguro: si es null, 0.
       likesCount: map['likesCount'] ?? 0, 
     );
   }
