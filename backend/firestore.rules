@@ -2,6 +2,36 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // TODO: WRITE ANY NECESSARY FIRESTORE RULES HERE
+
+    // Función auxiliar para validar que el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Función para validar que el usuario es el dueño del documento
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Reglas para la colección de usuarios
+    match /users/{userId} {
+      allow read: if true; // Perfiles públicos (opcional, según diseño)
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Reglas para los artículos (Noticias)
+    match /articles/{articleId} {
+      // CUALQUIERA puede leer las noticias (Requerimiento de Feed Público)
+      allow read: if true;
+
+      // SOLO usuarios autenticados pueden crear o editar
+      // Además, validamos que el campo 'userId' coincida con quien hace la petición
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().hasAll(['title', 'content', 'category', 'publishedAt']);
+      
+      allow update, delete: if isAuthenticated() 
+                            && resource.data.userId == request.auth.uid;
+    }
   }
 }
