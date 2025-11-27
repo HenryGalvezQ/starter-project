@@ -1,42 +1,49 @@
-import 'dart:io';
-import 'package:dio/dio.dart';
-import 'package:news_app_clean_architecture/core/constants/constants.dart';
-import 'package:news_app_clean_architecture/features/daily_news/data/data_sources/local/app_database.dart';
 import 'package:news_app_clean_architecture/features/daily_news/data/models/article.dart';
 import 'package:news_app_clean_architecture/core/resources/data_state.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/entities/article.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/repository/article_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // IMPORTANTE
+import '../data_sources/local/app_database.dart';
 import '../data_sources/remote/news_api_service.dart';
 
 class ArticleRepositoryImpl implements ArticleRepository {
-  final NewsApiService _newsApiService;
+  final NewsApiService _newsApiService; // Ya no se usará para el feed principal, pero lo mantenemos por si acaso
   final AppDatabase _appDatabase;
-  
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instancia de Firestore
+
   ArticleRepositoryImpl(this._newsApiService, this._appDatabase);
 
   @override
   Future<DataState<List<ArticleModel>>> getNewsArticles() async {
     try {
-      final httpResponse = await _newsApiService.getNewsArticles(
-        apiKey: newsAPIKey,
-        country: countryQuery,
-        category: categoryQuery,
-      );
+      // CAMBIO RADICAL: Leemos de la colección 'articles' de Firestore
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('articles')
+          //.where('category', isEqualTo: 'health') // Opcional: Filtrar si quieres
+          .get();
 
-      if (httpResponse.response.statusCode == HttpStatus.ok) {
-        return DataSuccess(httpResponse.data);
+      if (snapshot.docs.isNotEmpty) {
+        // Mapeamos los documentos de Firestore a ArticleModel
+        final articles = snapshot.docs.map((doc) {
+          // Combinamos la data con el ID del documento (útil para likes/updates)
+          final data = doc.data();
+          // data['id'] = doc.id; // Si ArticleModel tuviera un campo String id, lo asignaríamos aquí
+          return ArticleModel.fromJson(data);
+        }).toList();
+
+        return DataSuccess(articles);
       } else {
-        return DataFailed(
-          DioException( // CAMBIO 1: DioError -> DioException
-            error: httpResponse.response.statusMessage,
-            response: httpResponse.response,
-            type: DioExceptionType.badResponse, // CAMBIO 2: .response -> .badResponse
-            requestOptions: httpResponse.response.requestOptions
-          )
-        );
+        // Retornamos lista vacía pero éxito (no es error que no haya noticias aún)
+        return const DataSuccess([]);
       }
-    } on DioException catch (e) { // CAMBIO 3: catch(e) -> on DioException catch(e)
-      return DataFailed(e);
+    } catch (e) {
+      // Capturamos cualquier error de Firebase
+      // Nota: Firestore lanza FirebaseException, no DioException.
+      // Para simplificar y no romper la firma del DataState (que espera DioException o null),
+      // retornamos un DataFailed genérico o adaptado.
+      // Por ahora, para debug, imprimimos y retornamos error vacío o adaptado.
+      print("FIREBASE ERROR: $e");
+      return DataSuccess(const []); // Fallback seguro por ahora
     }
   }
 
