@@ -10,6 +10,8 @@ import 'features/daily_news/presentation/bloc/article/remote/remote_article_even
 import 'features/daily_news/presentation/bloc/article/local/local_article_bloc.dart'; // Importante
 import 'features/daily_news/presentation/bloc/article/local/local_article_event.dart'; // Importante
 import 'injection_container.dart';
+import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +31,11 @@ class MyApp extends StatelessWidget {
     // Esto asegura que LocalArticleBloc exista en TODAS las pantallas (Home, Detail, Saved).
     return MultiBlocProvider(
       providers: [
+        // NUEVO: Auth Bloc Global
+        BlocProvider<AuthBloc>(
+          create: (context) => sl()..add(AuthCheckRequested()),
+        ),
+        // Existentes
         BlocProvider<RemoteArticlesBloc>(
           create: (context) => sl()..add(const GetArticles()),
         ),

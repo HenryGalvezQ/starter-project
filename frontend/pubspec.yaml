@@ -42,7 +42,7 @@ dependencies:
   firebase_core: ^2.24.0
   cloud_firestore: ^4.13.3
   firebase_storage: ^11.5.5
-
+  firebase_auth: ^4.14.0
 
   #Hooks
   flutter_hooks: ^0.20.0
