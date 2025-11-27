@@ -96,7 +96,7 @@ class _$AppDatabase extends AppDatabase {
       },
       onCreate: (database, version) async {
         await database.execute(
-            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, PRIMARY KEY (`id`))');
+            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, PRIMARY KEY (`url`))');
 
         await callback?.onCreate?.call(database, version);
       },
@@ -126,12 +126,13 @@ class _$ArticleDao extends ArticleDao {
                   'url': item.url,
                   'urlToImage': item.urlToImage,
                   'publishedAt': item.publishedAt,
-                  'content': item.content
+                  'content': item.content,
+                  'likesCount': item.likesCount
                 }),
         _articleModelDeletionAdapter = DeletionAdapter(
             database,
             'article',
-            ['id'],
+            ['url'],
             (ArticleModel item) => <String, Object?>{
                   'id': item.id,
                   'author': item.author,
@@ -140,7 +141,8 @@ class _$ArticleDao extends ArticleDao {
                   'url': item.url,
                   'urlToImage': item.urlToImage,
                   'publishedAt': item.publishedAt,
-                  'content': item.content
+                  'content': item.content,
+                  'likesCount': item.likesCount
                 });
 
   final sqflite.DatabaseExecutor database;
@@ -164,13 +166,30 @@ class _$ArticleDao extends ArticleDao {
             url: row['url'] as String?,
             urlToImage: row['urlToImage'] as String?,
             publishedAt: row['publishedAt'] as String?,
-            content: row['content'] as String?));
+            content: row['content'] as String?,
+            likesCount: row['likesCount'] as int?));
+  }
+
+  @override
+  Future<ArticleModel?> findArticleByUrl(String url) async {
+    return _queryAdapter.query('SELECT * FROM article WHERE url = ?1',
+        mapper: (Map<String, Object?> row) => ArticleModel(
+            id: row['id'] as int?,
+            author: row['author'] as String?,
+            title: row['title'] as String?,
+            description: row['description'] as String?,
+            url: row['url'] as String?,
+            urlToImage: row['urlToImage'] as String?,
+            publishedAt: row['publishedAt'] as String?,
+            content: row['content'] as String?,
+            likesCount: row['likesCount'] as int?),
+        arguments: [url]);
   }
 
   @override
   Future<void> insertArticle(ArticleModel article) async {
     await _articleModelInsertionAdapter.insert(
-        article, OnConflictStrategy.abort);
+        article, OnConflictStrategy.replace);
   }
 
   @override

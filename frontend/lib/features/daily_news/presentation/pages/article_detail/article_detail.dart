@@ -14,17 +14,19 @@ class ArticleDetailsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => sl<LocalArticleBloc>(),
-      child: Scaffold(
-        appBar: _buildAppBar(),
-        body: _buildBody(),
-        floatingActionButton: _buildFloatingActionButton(),
-      ),
+    // Estado local para el botón flotante (Switch visual)
+    // Nota: Por ahora inicia en 'false' (azul) visualmente al entrar, 
+    // hasta que tengamos la persistencia en el objeto Article (Fase 4).
+    final isSaved = useState(false);
+
+    return Scaffold(
+      appBar: _buildAppBar(context),
+      body: _buildBody(),
+      floatingActionButton: _buildFloatingActionButton(context, isSaved),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
       leading: Builder(
         builder: (context) => GestureDetector(
@@ -85,7 +87,17 @@ class ArticleDetailsView extends HookWidget {
       width: double.maxFinite,
       height: 250,
       margin: const EdgeInsets.only(top: 14),
-      child: Image.network(article!.urlToImage!, fit: BoxFit.cover),
+      child: Image.network(
+        article!.urlToImage!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          // CORREGIDO: 'const' movido al hijo, Container no puede ser const
+          return Container(
+              height: 250,
+              color: Colors.grey,
+              child: const Center(child: Icon(Icons.error)));
+        },
+      ),
     );
   }
 
@@ -99,26 +111,44 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  Widget _buildFloatingActionButton() {
-    return Builder(
-      builder: (context) => FloatingActionButton(
-        onPressed: () => _onFloatingActionButtonPressed(context),
-        child: const Icon(Ionicons.bookmark, color: Colors.white),
+  Widget _buildFloatingActionButton(BuildContext context, ValueNotifier<bool> isSaved) {
+    return FloatingActionButton(
+      // Lógica de Color: Naranja si está guardado, Azul si no
+      backgroundColor: isSaved.value ? Colors.orange : Colors.blueAccent,
+      onPressed: () {
+        if (isSaved.value) {
+          // CASO 1: Si ya estaba marcado -> ELIMINAR
+          context.read<LocalArticleBloc>().add(RemoveArticle(article!));
+          isSaved.value = false; // Actualizamos switch visual
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Eliminado de favoritos'),
+              duration: Duration(milliseconds: 500),
+            ),
+          );
+        } else {
+          // CASO 2: Si no estaba marcado -> GUARDAR
+          context.read<LocalArticleBloc>().add(SaveArticle(article!));
+          isSaved.value = true; // Actualizamos switch visual
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Guardado en favoritos'),
+              duration: Duration(milliseconds: 500),
+            ),
+          );
+        }
+      },
+      // Lógica de Icono: Relleno vs Borde
+      child: Icon(
+        isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
+        color: Colors.white,
       ),
     );
   }
 
   void _onBackButtonTapped(BuildContext context) {
     Navigator.pop(context);
-  }
-
-  void _onFloatingActionButtonPressed(BuildContext context) {
-    BlocProvider.of<LocalArticleBloc>(context).add(SaveArticle(article!));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        backgroundColor: Colors.black,
-        content: Text('Article saved successfully.'),
-      ),
-    );
   }
 }
