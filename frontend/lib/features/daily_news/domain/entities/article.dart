@@ -9,7 +9,12 @@ class ArticleEntity extends Equatable {
   final String? urlToImage;
   final String? publishedAt;
   final String? content;
-  final int? likesCount; // NUEVO
+  final int? likesCount;
+  
+  // NUEVOS CAMPOS OFFLINE-FIRST
+  final String? syncStatus; // 'pending', 'synced'
+  final String? localImagePath; // Ruta local en el dispositivo
+  final bool? isSaved; // Identifica si es un marcador explícito
 
   const ArticleEntity({
     this.id,
@@ -20,7 +25,10 @@ class ArticleEntity extends Equatable {
     this.urlToImage,
     this.publishedAt,
     this.content,
-    this.likesCount, // NUEVO
+    this.likesCount,
+    this.syncStatus,
+    this.localImagePath,
+    this.isSaved,
   });
 
   @override
@@ -34,7 +42,10 @@ class ArticleEntity extends Equatable {
       urlToImage,
       publishedAt,
       content,
-      likesCount, // NUEVO
+      likesCount,
+      syncStatus,
+      localImagePath,
+      isSaved,
     ];
   }
 }

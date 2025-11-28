@@ -13,7 +13,10 @@ class ArticleModel extends ArticleEntity {
     String? urlToImage,
     String? publishedAt,
     String? content,
-    int? likesCount, // NUEVO
+    int? likesCount,
+    String? syncStatus,
+    String? localImagePath,
+    bool? isSaved,
   }): super(
     id: id,
     author: author,
@@ -23,7 +26,10 @@ class ArticleModel extends ArticleEntity {
     urlToImage: urlToImage,
     publishedAt: publishedAt,
     content: content,
-    likesCount: likesCount, // NUEVO
+    likesCount: likesCount,
+    syncStatus: syncStatus,
+    localImagePath: localImagePath,
+    isSaved: isSaved,
   );
 
   factory ArticleModel.fromJson(Map < String, dynamic > map) {
@@ -35,8 +41,11 @@ class ArticleModel extends ArticleEntity {
       urlToImage: map['urlToImage'] != null && map['urlToImage'] != "" ? map['urlToImage'] : kDefaultImage,
       publishedAt: map['publishedAt'] ?? "",
       content: map['content'] ?? "",
-      // Mapeo seguro: si es null, 0.
-      likesCount: map['likesCount'] ?? 0, 
+      likesCount: map['likesCount'] ?? 0,
+      // Los campos locales usualmente vienen nulos del API, asignamos defaults
+      syncStatus: map['syncStatus'] ?? 'synced', 
+      localImagePath: null, 
+      isSaved: false, 
     );
   }
 
@@ -51,6 +60,9 @@ class ArticleModel extends ArticleEntity {
       publishedAt: entity.publishedAt,
       content: entity.content,
       likesCount: entity.likesCount,
+      syncStatus: entity.syncStatus,
+      localImagePath: entity.localImagePath,
+      isSaved: entity.isSaved,
     );
   }
 }
