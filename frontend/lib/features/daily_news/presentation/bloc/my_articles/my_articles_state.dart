@@ -27,3 +27,8 @@ class MyArticlesError extends MyArticlesState {
 class ArticleSavedSuccess extends MyArticlesState {
   const ArticleSavedSuccess();
 }
+
+// NUEVO: Indica que la sincronización con la nube terminó
+class MyArticlesSyncSuccess extends MyArticlesState {
+  const MyArticlesSyncSuccess({List<ArticleEntity>? articles}) : super(articles: articles);
+}

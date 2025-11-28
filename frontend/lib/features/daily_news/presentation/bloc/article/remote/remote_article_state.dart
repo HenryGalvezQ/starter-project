@@ -4,12 +4,15 @@ import '../../../../domain/entities/article.dart';
 
 abstract class RemoteArticlesState extends Equatable {
   final List<ArticleEntity>? articles;
-  final DioException? error; // CAMBIO AQUÍ
+  final DioException? error;
   
   const RemoteArticlesState({this.articles, this.error});
 
+  // CORRECCIÓN CRÍTICA:
+  // 1. Cambiamos el tipo de retorno a List<Object?> (con interrogación)
+  // 2. Quitamos los '!' de las variables. Equatable sabe manejar nulos.
   @override
-  List<Object> get props => [articles!, error!];
+  List<Object?> get props => [articles, error]; 
 }
 
 class RemoteArticlesLoading extends RemoteArticlesState {
@@ -21,5 +24,5 @@ class RemoteArticlesDone extends RemoteArticlesState {
 }
 
 class RemoteArticlesError extends RemoteArticlesState {
-  const RemoteArticlesError(DioException error) : super(error: error); // CAMBIO AQUÍ
+  const RemoteArticlesError(DioException error) : super(error: error);
 }

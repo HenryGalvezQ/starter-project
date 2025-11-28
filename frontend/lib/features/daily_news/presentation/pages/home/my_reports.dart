@@ -35,8 +35,12 @@ class MyReports extends StatelessWidget {
           if (state is MyArticlesLoading) {
             return const Center(child: CupertinoActivityIndicator());
           }
-          if (state is MyArticlesLoaded) {
-            if (state.articles!.isEmpty) {
+          
+          // CORRECCIÓN: Aceptamos Loaded O SyncSuccess para mostrar la lista
+          if (state is MyArticlesLoaded || state is MyArticlesSyncSuccess) {
+            
+            // Protección: Si la lista es nula o vacía
+            if (state.articles == null || state.articles!.isEmpty) {
               return const Center(child: Text("No has escrito reportes aún."));
             }
             

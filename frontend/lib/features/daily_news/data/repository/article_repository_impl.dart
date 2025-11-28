@@ -81,6 +81,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
       syncStatus: article.syncStatus ?? 'synced', 
       localImagePath: article.localImagePath,
       isSaved: true,
+      category: article.category ?? 'General',
     );
     return _appDatabase.articleDAO.insertArticle(model);
   }
@@ -166,7 +167,8 @@ class ArticleRepositoryImpl implements ArticleRepository {
       return;
     }
 
-    print("SYNC: Sincronizando ${pendingArticles.length} artículos de ${user.displayName}...");
+    final userName = user.displayName ?? user.email ?? "Usuario";
+    print("SYNC: Sincronizando ${pendingArticles.length} artículos de $userName...");
 
     for (final article in pendingArticles) {
       try {
@@ -193,7 +195,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
         
         await docRef.set({
           'userId': user.uid, // Firma en la nube
-          'author': article.author,
+          'author': article.author, // Usamos el nombre local que ya inyectamos al crear
           'title': article.title,
           'description': article.description,
           'category': article.category ?? 'General',

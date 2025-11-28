@@ -45,10 +45,16 @@ class MyArticlesBloc extends Bloc<MyArticlesEvent, MyArticlesState> {
   }
 
   void _onSyncMyArticles(SyncMyArticles event, Emitter<MyArticlesState> emit) async {
-    // Disparamos sincronización (fire & forget o loading)
-    // Para UX, recargamos la lista después de un pequeño delay o mostramos loading
     emit(const MyArticlesLoading());
+    
+    // 1. Ejecutar Sincronización
     await _syncPendingArticlesUseCase();
-    add(const LoadMyArticles());
+    
+    // 2. Obtener la lista actualizada localmente
+    final articles = await _getMyArticlesUseCase();
+    
+    // 3. CAMBIO: Emitir Success específico en lugar de solo Loaded
+    // Esto servirá de "señal" para que la UI refresque el otro Feed
+    emit(MyArticlesSyncSuccess(articles: articles));
   }
 }

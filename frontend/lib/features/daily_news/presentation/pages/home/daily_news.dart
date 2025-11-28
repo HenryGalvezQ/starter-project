@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 // Imports de Lógica Remota (Feed de Noticias)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_state.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_event.dart'; // NECESARIO PARA GetArticles
 
 // Imports de Lógica Local (Guardar Artículos)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
@@ -14,6 +15,7 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 // Imports de Mis Reportes (Para recargar al cambiar sesión)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart'; // IMPORTANTE
 
 // Imports de Autenticación
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
@@ -35,77 +37,86 @@ class DailyNews extends HookWidget {
     // Estado local para el índice del tab actual
     final tabIndex = useState(0);
 
-    // CAMBIO CLAVE: Usamos BlocConsumer en lugar de BlocBuilder
-    // Esto nos permite escuchar (listener) cambios de estado sin reconstruir la UI innecesariamente
+    // Escuchamos el estado de autenticación para proteger rutas
     return BlocConsumer<AuthBloc, AuthState>(
-      // 1. LÓGICA DE LIMPIEZA REACTIVA
       listener: (context, authState) {
         if (authState is Authenticated) {
-          // Si entra un usuario (Login), forzamos la recarga de los BLoCs personales.
-          // Al recargar, el Repositorio usará el nuevo UID para consultar la DB Local.
-          // Esto limpia los "fantasmas" del usuario anterior en la RAM.
+          // Si entra un nuevo usuario, recargamos datos personales
+          print("🔄 UI: Sesión iniciada. Recargando datos para ${authState.user?.email}");
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
           context.read<LocalArticleBloc>().add(const GetSavedArticles());
-          print("🔄 UI: Sesión cambiada. Recargando datos para ${authState.user?.email}");
         } 
         else if (authState is Unauthenticated) {
-          // Si sale (Logout), reseteamos el tab al inicio para evitar que quede en una pantalla protegida
+          // Al salir, volvemos al tab inicial
           tabIndex.value = 0;
         }
       },
-      
-      // 2. CONSTRUCCIÓN DE LA UI (Navegación)
       builder: (context, authState) {
         
-        // Determinamos si el usuario está autenticado para mostrar/ocultar pantallas
+        // Determinamos si el usuario está autenticado
         final bool isAuth = authState is Authenticated;
 
-        return Scaffold(
-          body: IndexedStack(
-            index: tabIndex.value,
-            children: [
-              // TAB 0: Fitness News (Público - Siempre visible)
-              const _FitnessNewsView(),
+        // MULTI BLOC LISTENER: El puente de comunicación
+        return MultiBlocListener(
+          listeners: [
+            // Escuchar si la sincronización termina con éxito
+            BlocListener<MyArticlesBloc, MyArticlesState>(
+              listener: (context, state) {
+                if (state is MyArticlesSyncSuccess) {
+                  print("🔄 FEED EVENT: Sincronización completada. Recargando noticias globales...");
+                  // MAGIA: Disparamos la recarga del Feed Global automáticamente
+                  context.read<RemoteArticlesBloc>().add(const GetArticles());
+                }
+              },
+            ),
+          ],
+          child: Scaffold(
+            body: IndexedStack(
+              index: tabIndex.value,
+              children: [
+                // TAB 0: Fitness News (Público - Siempre visible)
+                const _FitnessNewsView(),
 
-              // TAB 1: My Reports (Protegido)
-              isAuth ? const MyReports() : const LoginScreen(),
+                // TAB 1: My Reports (Protegido)
+                isAuth ? const MyReports() : const LoginScreen(),
 
-              // TAB 2: Saved (Protegido)
-              isAuth ? const SavedArticles() : const LoginScreen(),
+                // TAB 2: Saved (Protegido)
+                isAuth ? const SavedArticles() : const LoginScreen(),
 
-              // TAB 3: Profile (Dinámico)
-              isAuth 
-                  ? ProfileScreen(user: authState.user!) 
-                  : const LoginScreen(),
-            ],
-          ),
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: tabIndex.value,
-            onTap: (index) {
-              tabIndex.value = index;
-            },
-            selectedItemColor: Colors.black,
-            unselectedItemColor: Colors.grey,
-            showUnselectedLabels: true,
-            type: BottomNavigationBarType.fixed,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.fitness_center),
-                label: 'News',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.article_outlined),
-                label: 'Reports',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.bookmark_border),
-                label: 'Saved',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.person_outline),
-                label: 'Profile',
-              ),
-            ],
+                // TAB 3: Profile (Dinámico)
+                isAuth 
+                    ? ProfileScreen(user: authState.user!) 
+                    : const LoginScreen(),
+              ],
+            ),
+            bottomNavigationBar: BottomNavigationBar(
+              currentIndex: tabIndex.value,
+              onTap: (index) {
+                tabIndex.value = index;
+              },
+              selectedItemColor: Colors.black,
+              unselectedItemColor: Colors.grey,
+              showUnselectedLabels: true,
+              type: BottomNavigationBarType.fixed, // Necesario para que se vean bien 4 items
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.fitness_center),
+                  label: 'News',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.article_outlined),
+                  label: 'Reports',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.bookmark_border),
+                  label: 'Saved',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person_outline),
+                  label: 'Profile',
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -135,6 +146,7 @@ class _FitnessNewsView extends StatelessWidget {
   }
 
   Widget _buildBody() {
+    // Escuchamos al Bloc Remoto para pintar la lista
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, state) {
         if (state is RemoteArticlesLoading) {
@@ -160,9 +172,12 @@ class _FitnessNewsView extends StatelessWidget {
           article: articles[index],
           onArticlePressed: (article) => _onArticlePressed(context, article),
 
+          // Lógica de Guardado (Marcador)
           onBookmarkPressed: (article, isSaved) {
             if (isSaved) {
+              // CASO 1: El usuario lo marcó -> GUARDAR
               context.read<LocalArticleBloc>().add(SaveArticle(article));
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Guardado en favoritos'),
@@ -170,6 +185,7 @@ class _FitnessNewsView extends StatelessWidget {
                 ),
               );
             } else {
+              // CASO 2: El usuario lo desmarcó -> BORRAR
               context.read<LocalArticleBloc>().add(RemoveArticle(article));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -180,6 +196,7 @@ class _FitnessNewsView extends StatelessWidget {
             }
           },
 
+          // Acción de Like (Pulgar Arriba)
           onLikePressed: (article) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
