@@ -4,6 +4,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_state.dart';
+import 'package:news_app_clean_architecture/features/auth/presentation/pages/register/register.dart';
 
 class LoginScreen extends HookWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -87,12 +88,13 @@ class LoginScreen extends HookWidget {
                 
                 const SizedBox(height: 16),
                 
-                // Register Hint (Visual only for now)
+                // Register Link - ACTUALIZADO
                 TextButton(
                   onPressed: () {
-                     ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Usa cualquier email/pass válido en Firebase para entrar.")),
-                      );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                    );
                   },
                   child: const Text("¿No tienes cuenta? Regístrate"),
                 )

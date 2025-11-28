@@ -10,4 +10,17 @@ class AuthLogin extends AuthEvent {
   const AuthLogin(this.email, this.password);
 }
 
+// NUEVO EVENTO
+class AuthRegister extends AuthEvent {
+  final String email;
+  final String password;
+  final String username;
+
+  const AuthRegister({
+    required this.email,
+    required this.password,
+    required this.username,
+  });
+}
+
 class AuthLogout extends AuthEvent {}
