@@ -56,13 +56,38 @@ class ArticleDetailsView extends HookWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TITLE
+          // TITULO
           Text(
             article!.title!,
-            style: const TextStyle(
-                fontFamily: 'Butler',
-                fontSize: 20,
-                fontWeight: FontWeight.w900),
+            style: const TextStyle(fontFamily: 'Butler', fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+
+          // NUEVO: AUTOR Y CATEGORÍA (Chip)
+          Row(
+            children: [
+              // Categoría Chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  article!.category ?? 'General',
+                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Autor
+              Expanded(
+                child: Text(
+                  "Por ${article!.author ?? 'Redacción'}",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 14),
@@ -145,7 +170,10 @@ class ArticleDetailsView extends HookWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
       child: Text(
-        '${article!.description ?? ''}\n\n${article!.content ?? ''}',
+        // CORRECCIÓN: Solo mostramos contenido. Si es null, mostramos la descripción como fallback.
+        article!.content != null && article!.content!.isNotEmpty 
+            ? article!.content! 
+            : article!.description ?? '',
         style: const TextStyle(fontSize: 16),
       ),
     );

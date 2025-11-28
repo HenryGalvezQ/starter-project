@@ -8,6 +8,8 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart';
 import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 // Categorías fijas del sistema
 const List<String> kArticleCategories = [
@@ -36,7 +38,18 @@ class CreateArticleScreen extends HookWidget {
     Future<void> _pickImage(ImageSource source) async {
       final XFile? image = await picker.pickImage(source: source);
       if (image != null) {
-        localImagePath.value = image.path;
+        // 1. Obtener directorio seguro de la app (No se borra al cerrar)
+        final directory = await getApplicationDocumentsDirectory();
+        
+        // 2. Crear nombre de archivo único
+        final fileName = path.basename(image.path);
+        final permanentPath = '${directory.path}/$fileName';
+        
+        // 3. Mover archivo de caché a documentos
+        final File permanentImage = await File(image.path).copy(permanentPath);
+
+        // 4. Guardar la ruta PERMANENTE
+        localImagePath.value = permanentImage.path;
       }
     }
 

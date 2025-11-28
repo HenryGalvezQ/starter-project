@@ -146,7 +146,6 @@ class _FitnessNewsView extends StatelessWidget {
   }
 
   Widget _buildBody() {
-    // Escuchamos al Bloc Remoto para pintar la lista
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, state) {
         if (state is RemoteArticlesLoading) {
@@ -156,7 +155,17 @@ class _FitnessNewsView extends StatelessWidget {
           return const Center(child: Icon(Icons.refresh));
         }
         if (state is RemoteArticlesDone) {
-          return _buildArticlesList(context, state.articles!);
+          // NUEVO: Envolvemos la lista en RefreshIndicator
+          return RefreshIndicator(
+            onRefresh: () async {
+              // Dispara el evento al Bloc para traer noticias nuevas
+              context.read<RemoteArticlesBloc>().add(const GetArticles());
+              // Esperamos un poco para UX (opcional, el bloc maneja estados)
+              await Future.delayed(const Duration(seconds: 1));
+            },
+            color: Colors.black,
+            child: _buildArticlesList(context, state.articles!),
+          );
         }
         return const SizedBox();
       },

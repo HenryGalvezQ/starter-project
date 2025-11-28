@@ -1,22 +1,33 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_hooks/flutter_hooks.dart'; // NECESARIO PARA useEffect
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/create_article/create_article.dart';
 import '../../widgets/article_tile.dart';
 
-class MyReports extends StatelessWidget {
+class MyReports extends HookWidget {
   const MyReports({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    
+    // EFECTO: Al entrar a la pantalla, intentamos sincronizar automáticamente si hay pendientes
+    // Esto es crucial si el usuario guardó algo offline y cerró la app antes de tener internet.
+    useEffect(() {
+      // Disparamos sync sin bloquear la UI (en segundo plano)
+      // Si hay internet, pasará de naranja a verde solo.
+      context.read<MyArticlesBloc>().add(const SyncMyArticles());
+      return null;
+    }, []); // [] asegura que solo corra una vez al montar
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Reports', style: TextStyle(color: Colors.black)),
         actions: [
-          // BOTÓN DE SINCRONIZACIÓN MANUAL
+          // BOTÓN DE SINCRONIZACIÓN MANUAL (Backup)
           IconButton(
             icon: const Icon(Icons.cloud_upload, color: Colors.blue),
             onPressed: () {
@@ -36,7 +47,7 @@ class MyReports extends StatelessWidget {
             return const Center(child: CupertinoActivityIndicator());
           }
           
-          // CORRECCIÓN: Aceptamos Loaded O SyncSuccess para mostrar la lista
+          // Aceptamos Loaded O SyncSuccess para mostrar la lista
           if (state is MyArticlesLoaded || state is MyArticlesSyncSuccess) {
             
             // Protección: Si la lista es nula o vacía
@@ -54,7 +65,7 @@ class MyReports extends StatelessWidget {
                   children: [
                     ArticleWidget(
                       article: article,
-                      // Desactivamos botones de guardar/like en vista de edición propia por simplicidad
+                      // Desactivamos botones de guardar/like en vista de edición propia
                       isRemovable: false, 
                     ),
                     

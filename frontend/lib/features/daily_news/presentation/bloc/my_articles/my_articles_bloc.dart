@@ -31,14 +31,20 @@ class MyArticlesBloc extends Bloc<MyArticlesEvent, MyArticlesState> {
   }
 
   void _onSaveNewArticle(SaveNewArticle event, Emitter<MyArticlesState> emit) async {
-    // No emitimos Loading aquí para no borrar la lista de fondo, 
-    // o podríamos usar un estado híbrido. Por simplicidad:
     try {
+      // 1. Guardar en Local (Floor)
       await _createArticleUseCase(params: event.article);
-      // Emitimos éxito para que la UI cierre el formulario o muestre SnackBar
+      
+      // 2. Avisar éxito a la UI (para cerrar el formulario)
       emit(const ArticleSavedSuccess());
-      // Recargamos la lista inmediatamente
+      
+      // 3. Recargar la lista local (para que aparezca el item con reloj naranja)
       add(const LoadMyArticles());
+
+      // 4. AUTO-SYNC: Disparar intento de subida inmediato
+      // Si hay internet, pasará a verde en segundos. Si no, se queda en naranja.
+      add(const SyncMyArticles()); 
+
     } catch (e) {
       emit(MyArticlesError("Error guardando reporte: $e"));
     }

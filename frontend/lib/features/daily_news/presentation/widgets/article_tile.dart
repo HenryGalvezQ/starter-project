@@ -52,70 +52,71 @@ class ArticleWidget extends HookWidget {
   }
 
   Widget _buildImage(BuildContext context) {
-    // CASO 1: Imagen Local (Prioridad para "My Reports" offline)
+    // 1. Decidir qué Widget de imagen usar (Local vs Remoto)
+    Widget imageWidget;
+    
     if (article?.localImagePath != null && article!.localImagePath!.isNotEmpty) {
-      final file = File(article!.localImagePath!);
-      if (file.existsSync()) {
-        return Padding(
-          padding: const EdgeInsetsDirectional.only(end: 14),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20.0),
-            child: Container(
-              width: MediaQuery.of(context).size.width / 3,
-              height: double.maxFinite,
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.08),
-                image: DecorationImage(
-                  image: FileImage(file), // <--- Usamos FileImage aquí
-                  fit: BoxFit.cover
-                ),
-              ),
-            ),
-          ),
-        );
-      }
+       final file = File(article!.localImagePath!);
+       // Si el archivo existe físicamente en el celular, lo usamos
+       if (file.existsSync()) {
+         imageWidget = Image.file(file, fit: BoxFit.cover);
+       } else {
+         // Si la ruta existe en DB pero el archivo se borró (ej: cache cleaner), intentamos bajarlo de la nube
+         imageWidget = CachedNetworkImage(
+            imageUrl: article!.urlToImage ?? '', 
+            fit: BoxFit.cover,
+            placeholder: (context, url) => const CupertinoActivityIndicator(),
+            errorWidget: (context, url, error) => const Icon(Icons.error),
+         );
+       }
+    } else {
+       // Caso estándar: Imagen de internet
+       imageWidget = CachedNetworkImage(
+         imageUrl: article!.urlToImage ?? '',
+         fit: BoxFit.cover,
+         placeholder: (context, url) => const CupertinoActivityIndicator(),
+         errorWidget: (context, url, error) => const Icon(Icons.error),
+       );
     }
 
-    // CASO 2: Imagen Remota (Feed Global o Local sin foto nueva)
-    return CachedNetworkImage(
-      imageUrl: article!.urlToImage ?? '',
-      imageBuilder: (context, imageProvider) => Padding(
-        padding: const EdgeInsetsDirectional.only(end: 14),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20.0),
-          child: Container(
-            width: MediaQuery.of(context).size.width / 3,
-            height: double.maxFinite,
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.08),
-              image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
-            ),
-          ),
-        ),
-      ),
-      // Placeholder de carga
-      progressIndicatorBuilder: (context, url, downloadProgress) => Padding(
-        padding: const EdgeInsetsDirectional.only(end: 14),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20.0),
-          child: Container(
-            width: MediaQuery.of(context).size.width / 3,
-            height: double.maxFinite,
-            child: const CupertinoActivityIndicator(),
-            decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
-          ),
-        ),
-      ),
-      // Error Widget
-      errorWidget: (context, url, error) => Padding(
-        padding: const EdgeInsetsDirectional.only(end: 14),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20.0),
-          child: Container(
-            width: MediaQuery.of(context).size.width / 3,
-            height: double.maxFinite,
-            child: const Icon(Icons.error), // Aquí veías el error gris
-            decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
+    // 2. Construir el contenedor con la Imagen + Etiqueta de Categoría
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20.0),
+        child: Container(
+          width: MediaQuery.of(context).size.width / 3,
+          height: double.maxFinite,
+          decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
+          
+          // STACK: Permite poner elementos uno encima del otro
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Capa de Fondo: La Imagen
+              imageWidget,
+              
+              // Capa Superior: Chip de Categoría (Solo si existe)
+              if (article?.category != null && article!.category!.isNotEmpty)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    color: Colors.black54, // Fondo semitransparente para legibilidad
+                    child: Text(
+                      article!.category!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white, 
+                        fontSize: 10, 
+                        fontWeight: FontWeight.bold
+                      ),
+                    ),
+                  ),
+                )
+            ],
           ),
         ),
       ),
