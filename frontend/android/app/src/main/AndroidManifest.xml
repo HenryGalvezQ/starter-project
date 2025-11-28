@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
    <application
         android:label="news_app_clean_architecture"
-        android:name="androidx.multidex.MultiDexApplication"
+        android:name="${applicationName}"
         
         android:icon="@mipmap/ic_launcher"
         >
