@@ -187,4 +187,28 @@ class ArticleRepositoryImpl implements ArticleRepository {
       }
     }
   }
+
+  @override
+  Future<void> createLocalArticle(ArticleEntity article) {
+    // Reconstruimos para asegurar estados iniciales correctos de un reporte nuevo
+    final model = ArticleModel(
+      // Si no tiene ID (o es nulo), Floor lo autogenerará si es int, 
+      // pero como usamos 'url' como PK, debemos asegurar que tenga una única.
+      url: article.url, // El UUID lo generaremos en el Bloc/UI
+      author: article.author,
+      title: article.title,
+      description: article.description,
+      content: article.content,
+      publishedAt: article.publishedAt,
+      urlToImage: article.urlToImage ?? "", 
+      
+      // VALORES CRÍTICOS PARA OFFLINE
+      syncStatus: 'pending', // Nace pendiente de subida
+      localImagePath: article.localImagePath, // Guardamos ruta de foto local
+      isSaved: false, // No es un favorito, es un reporte propio
+      likesCount: 0,
+    );
+
+    return _appDatabase.articleDAO.insertArticle(model);
+  }
 }

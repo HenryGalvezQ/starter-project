@@ -12,6 +12,8 @@ import 'features/daily_news/presentation/bloc/article/local/local_article_event.
 import 'injection_container.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +43,9 @@ class MyApp extends StatelessWidget {
         ),
         BlocProvider<LocalArticleBloc>(
           create: (context) => sl()..add(const GetSavedArticles()),
+        ),
+        BlocProvider<MyArticlesBloc>(
+          create: (context) => sl()..add(const LoadMyArticles()),
         ),
       ],
       child: MaterialApp(

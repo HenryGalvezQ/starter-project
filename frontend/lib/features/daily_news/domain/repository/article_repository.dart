@@ -19,4 +19,7 @@ abstract class ArticleRepository {
 
   // Forzar la sincronización de artículos 'pending' a la nube
   Future<void> syncPendingArticles();
+
+  // NUEVO: Crear un artículo localmente (My Report)
+  Future<void> createLocalArticle(ArticleEntity article);
 }

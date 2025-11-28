@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:ionicons/ionicons.dart';
 import '../../domain/entities/article.dart';
+import 'dart:io';
 
 class ArticleWidget extends HookWidget {
   final ArticleEntity? article;
@@ -51,6 +52,31 @@ class ArticleWidget extends HookWidget {
   }
 
   Widget _buildImage(BuildContext context) {
+    // CASO 1: Imagen Local (Prioridad para "My Reports" offline)
+    if (article?.localImagePath != null && article!.localImagePath!.isNotEmpty) {
+      final file = File(article!.localImagePath!);
+      if (file.existsSync()) {
+        return Padding(
+          padding: const EdgeInsetsDirectional.only(end: 14),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20.0),
+            child: Container(
+              width: MediaQuery.of(context).size.width / 3,
+              height: double.maxFinite,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.08),
+                image: DecorationImage(
+                  image: FileImage(file), // <--- Usamos FileImage aquí
+                  fit: BoxFit.cover
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    // CASO 2: Imagen Remota (Feed Global o Local sin foto nueva)
     return CachedNetworkImage(
       imageUrl: article!.urlToImage ?? '',
       imageBuilder: (context, imageProvider) => Padding(
@@ -67,6 +93,7 @@ class ArticleWidget extends HookWidget {
           ),
         ),
       ),
+      // Placeholder de carga
       progressIndicatorBuilder: (context, url, downloadProgress) => Padding(
         padding: const EdgeInsetsDirectional.only(end: 14),
         child: ClipRRect(
@@ -79,6 +106,7 @@ class ArticleWidget extends HookWidget {
           ),
         ),
       ),
+      // Error Widget
       errorWidget: (context, url, error) => Padding(
         padding: const EdgeInsetsDirectional.only(end: 14),
         child: ClipRRect(
@@ -86,7 +114,7 @@ class ArticleWidget extends HookWidget {
           child: Container(
             width: MediaQuery.of(context).size.width / 3,
             height: double.maxFinite,
-            child: const Icon(Icons.error),
+            child: const Icon(Icons.error), // Aquí veías el error gris
             decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
           ),
         ),

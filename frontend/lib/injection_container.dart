@@ -17,9 +17,10 @@ import 'features/daily_news/domain/usecases/save_article.dart';
 // Nuevos UseCases Fase 5
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/get_my_articles.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_pending_articles.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart'; // Import
 
 import 'features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
-
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/create_article.dart'; // Importar
 // Features - Auth
 import 'package:news_app_clean_architecture/features/auth/data/repository/auth_repository_impl.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/repository/auth_repository.dart';
@@ -28,6 +29,7 @@ import 'package:news_app_clean_architecture/features/auth/domain/usecases/login_
 import 'package:news_app_clean_architecture/features/auth/domain/usecases/logout_user.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/usecases/register_user.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
+
 
 final sl = GetIt.instance;
 
@@ -86,6 +88,10 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<SyncPendingArticlesUseCase>(
     SyncPendingArticlesUseCase(sl())
   );
+  // ... En la sección -- USE CASES -- (Articles - Offline & My Reports)
+  sl.registerSingleton<CreateArticleUseCase>(
+    CreateArticleUseCase(sl())
+  );
 
   // Auth
   sl.registerSingleton<GetAuthStateUseCase>(GetAuthStateUseCase(sl()));
@@ -107,5 +113,9 @@ Future<void> initializeDependencies() async {
   // Auth Bloc
   sl.registerFactory<AuthBloc>(
     () => AuthBloc(sl(), sl(), sl(), sl())
+  );
+
+  sl.registerFactory<MyArticlesBloc>(
+  () => MyArticlesBloc(sl(), sl(), sl())
   );
 }
