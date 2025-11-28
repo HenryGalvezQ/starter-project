@@ -22,4 +22,6 @@ abstract class ArticleRepository {
 
   // NUEVO: Crear un artículo localmente (My Report)
   Future<void> createLocalArticle(ArticleEntity article);
+
+  Future<void> clearLocalData();
 }

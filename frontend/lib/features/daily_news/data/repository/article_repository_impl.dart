@@ -26,11 +26,10 @@ class ArticleRepositoryImpl implements ArticleRepository {
   );
 
   // --- MÉTODOS PÚBLICOS (Feed Global) ---
-
+  // Este no filtra por usuario porque es público para todos
   @override
   Future<DataState<List<ArticleModel>>> getNewsArticles() async {
     try {
-      // Leemos de Firestore (Feed Global)
       final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
           .collection('articles')
           .orderBy('publishedAt', descending: true)
@@ -39,7 +38,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
       if (snapshot.docs.isNotEmpty) {
         final articles = snapshot.docs.map((doc) {
           final data = doc.data();
-          data['syncStatus'] = 'synced'; // Viene de la nube, ya está sincronizado
+          data['syncStatus'] = 'synced';
           return ArticleModel.fromJson(data);
         }).toList();
         return DataSuccess(articles);
@@ -48,7 +47,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
       }
     } catch (e) {
       print("FIREBASE ERROR: $e");
-      return const DataSuccess([]); // Fallback seguro
+      return const DataSuccess([]);
     }
   }
 
@@ -56,18 +55,20 @@ class ArticleRepositoryImpl implements ArticleRepository {
 
   @override
   Future<List<ArticleModel>> getSavedArticles() async {
-    return _appDatabase.articleDAO.getSavedArticles();
-  }
+    final user = _auth.currentUser;
+    if (user == null) return []; // Si no hay usuario, no hay favoritos
 
-  @override
-  Future<void> removeArticle(ArticleEntity article) {
-    return _appDatabase.articleDAO.deleteArticle(ArticleModel.fromEntity(article));
+    // DATA ISOLATION: Solo traemos los favoritos de ESTE usuario
+    return _appDatabase.articleDAO.getSavedArticlesByUser(user.uid);
   }
 
   @override
   Future<void> saveArticle(ArticleEntity article) {
-    // FIX: Forzamos isSaved = true porque venimos del Feed donde es false/null
+    final user = _auth.currentUser;
+    
+    // DATA ISOLATION: Guardamos el favorito firmado con el UID actual
     final model = ArticleModel(
+      userId: user?.uid, // <--- CRÍTICO
       id: article.id,
       author: article.author,
       title: article.title,
@@ -79,12 +80,18 @@ class ArticleRepositoryImpl implements ArticleRepository {
       likesCount: article.likesCount,
       syncStatus: article.syncStatus ?? 'synced', 
       localImagePath: article.localImagePath,
-      isSaved: true, // <--- Importante para la pestaña Saved
+      isSaved: true,
     );
     return _appDatabase.articleDAO.insertArticle(model);
   }
 
-  // --- MÉTODOS OFFLINE-FIRST (Fase 5 y 6) ---
+  @override
+  Future<void> removeArticle(ArticleEntity article) {
+    // Para borrar, convertimos a modelo. Floor usa la PrimaryKey (url) para borrar.
+    return _appDatabase.articleDAO.deleteArticle(ArticleModel.fromEntity(article));
+  }
+
+  // --- MÉTODOS OFFLINE-FIRST ---
 
   @override
   Future<List<ArticleEntity>> getMyArticles() async {
@@ -92,10 +99,10 @@ class ArticleRepositoryImpl implements ArticleRepository {
     if (user == null) return [];
 
     try {
-      // 1. Locales pendientes
-      final localPending = await _appDatabase.articleDAO.getPendingArticles();
+      // 1. Locales pendientes (FILTRADO POR USUARIO)
+      final localPending = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
 
-      // 2. Remotos (Nube)
+      // 2. Remotos (Nube) - Ya filtra por userId en la query
       final remoteSnapshot = await _firestore
           .collection('articles')
           .where('userId', isEqualTo: user.uid)
@@ -108,32 +115,33 @@ class ArticleRepositoryImpl implements ArticleRepository {
         return ArticleModel.fromJson(data);
       }).toList();
 
-      // 3. Fusionar (Locales primero)
+      // 3. Fusionar
       return [...localPending, ...remoteArticles];
 
     } catch (e) {
       print("ERROR GETTING MY ARTICLES: $e");
-      // Fallback: solo locales si no hay red
-      return await _appDatabase.articleDAO.getPendingArticles();
+      // Fallback: Si no hay red, traemos TODO lo local de este usuario
+      return await _appDatabase.articleDAO.getArticlesByUser(user.uid);
     }
   }
 
   @override
   Future<void> createLocalArticle(ArticleEntity article) {
-    // Lógica para crear un nuevo reporte (nace pendiente)
+    final user = _auth.currentUser;
+
+    // DATA ISOLATION: El reporte nace firmado por el autor
     final model = ArticleModel(
-      url: article.url, // UUID generado en la UI
-      author: article.author,
+      userId: user?.uid, // <--- CRÍTICO
+      url: article.url, 
+      author: user?.displayName ?? article.author, // Usamos nombre real del Auth
       title: article.title,
       description: article.description,
       content: article.content,
       publishedAt: article.publishedAt,
       urlToImage: article.urlToImage ?? "", 
-      
-      // Valores críticos Offline
       syncStatus: 'pending',
       localImagePath: article.localImagePath,
-      isSaved: false, // Es un reporte propio, no necesariamente un favorito
+      isSaved: false, 
       likesCount: 0,
     );
 
@@ -145,20 +153,21 @@ class ArticleRepositoryImpl implements ArticleRepository {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final pendingArticles = await _appDatabase.articleDAO.getPendingArticles();
+    // DATA ISOLATION: Solo subimos lo que pertenece al usuario actual
+    final pendingArticles = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
 
     if (pendingArticles.isEmpty) {
-      print("SYNC: Nada pendiente.");
+      print("SYNC: Nada pendiente para el usuario ${user.email}.");
       return;
     }
 
-    print("SYNC: Iniciando sincronización de ${pendingArticles.length} artículos...");
+    print("SYNC: Sincronizando ${pendingArticles.length} artículos de ${user.displayName}...");
 
     for (final article in pendingArticles) {
       try {
         String imageUrl = article.urlToImage ?? "";
 
-        // PASO A: Subir Imagen (si existe localmente)
+        // PASO A: Subir Imagen
         if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
           final file = File(article.localImagePath!);
           if (await file.exists()) {
@@ -168,23 +177,17 @@ class ArticleRepositoryImpl implements ArticleRepository {
             
             await storageRef.putFile(
               file,
-              SettableMetadata(
-                contentType: 'image/jpeg',
-                customMetadata: {'uploaded_by': user.uid},
-              ),
+              SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
             );
             imageUrl = await storageRef.getDownloadURL();
-            print("SYNC: Imagen subida -> $imageUrl");
-          } else {
-            print("⚠️ SYNC: Archivo local no encontrado (se omitirá imagen).");
           }
         }
 
-        // PASO B: Subir Data a Firestore
-        final docRef = _firestore.collection('articles').doc(); // Auto-ID
+        // PASO B: Subir Data
+        final docRef = _firestore.collection('articles').doc(); 
         
         await docRef.set({
-          'userId': user.uid,
+          'userId': user.uid, // Firma en la nube
           'author': user.displayName ?? "Symmetry Journalist",
           'title': article.title,
           'description': article.description,
@@ -197,13 +200,19 @@ class ArticleRepositoryImpl implements ArticleRepository {
           'url': 'symmetry://article/${docRef.id}' 
         });
 
-        // PASO C: Actualizar Local DB a 'synced'
+        // PASO C: Actualizar Local
         await _appDatabase.articleDAO.updateSyncStatus(article.url!, 'synced');
-        print("SYNC: Artículo '${article.title}' sincronizado.");
+        print("SYNC: Completado para ${article.title}");
 
       } catch (e) {
-        print("SYNC ERROR en ${article.title}: $e");
+        print("SYNC ERROR: $e");
       }
     }
+  }
+
+  @override
+  Future<void> clearLocalData() async {
+    await _appDatabase.articleDAO.deleteAllArticles();
+    print("🗑️ LOCAL DATA: Base de datos limpiada.");
   }
 }

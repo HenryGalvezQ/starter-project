@@ -11,6 +11,10 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_event.dart';
 
+// Imports de Mis Reportes (Para recargar al cambiar sesión)
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
+
 // Imports de Autenticación
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_state.dart';
@@ -31,11 +35,29 @@ class DailyNews extends HookWidget {
     // Estado local para el índice del tab actual
     final tabIndex = useState(0);
 
-    // Escuchamos el estado de autenticación para proteger rutas
-    return BlocBuilder<AuthBloc, AuthState>(
+    // CAMBIO CLAVE: Usamos BlocConsumer en lugar de BlocBuilder
+    // Esto nos permite escuchar (listener) cambios de estado sin reconstruir la UI innecesariamente
+    return BlocConsumer<AuthBloc, AuthState>(
+      // 1. LÓGICA DE LIMPIEZA REACTIVA
+      listener: (context, authState) {
+        if (authState is Authenticated) {
+          // Si entra un usuario (Login), forzamos la recarga de los BLoCs personales.
+          // Al recargar, el Repositorio usará el nuevo UID para consultar la DB Local.
+          // Esto limpia los "fantasmas" del usuario anterior en la RAM.
+          context.read<MyArticlesBloc>().add(const LoadMyArticles());
+          context.read<LocalArticleBloc>().add(const GetSavedArticles());
+          print("🔄 UI: Sesión cambiada. Recargando datos para ${authState.user?.email}");
+        } 
+        else if (authState is Unauthenticated) {
+          // Si sale (Logout), reseteamos el tab al inicio para evitar que quede en una pantalla protegida
+          tabIndex.value = 0;
+        }
+      },
+      
+      // 2. CONSTRUCCIÓN DE LA UI (Navegación)
       builder: (context, authState) {
         
-        // Determinamos si el usuario está autenticado
+        // Determinamos si el usuario está autenticado para mostrar/ocultar pantallas
         final bool isAuth = authState is Authenticated;
 
         return Scaffold(
@@ -46,15 +68,12 @@ class DailyNews extends HookWidget {
               const _FitnessNewsView(),
 
               // TAB 1: My Reports (Protegido)
-              // Si está auth muestra Reports, si no, muestra Login
               isAuth ? const MyReports() : const LoginScreen(),
 
               // TAB 2: Saved (Protegido)
-              // Si está auth muestra Saved, si no, muestra Login
               isAuth ? const SavedArticles() : const LoginScreen(),
 
               // TAB 3: Profile (Dinámico)
-              // Si está auth muestra Perfil, si no, muestra Login
               isAuth 
                   ? ProfileScreen(user: authState.user!) 
                   : const LoginScreen(),
@@ -68,7 +87,7 @@ class DailyNews extends HookWidget {
             selectedItemColor: Colors.black,
             unselectedItemColor: Colors.grey,
             showUnselectedLabels: true,
-            type: BottomNavigationBarType.fixed, // Necesario para que se vean bien 4 items
+            type: BottomNavigationBarType.fixed,
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(Icons.fitness_center),
@@ -94,7 +113,7 @@ class DailyNews extends HookWidget {
   }
 }
 
-// Vista interna para el Feed de Noticias
+// Vista interna para el Feed de Noticias (Sin cambios)
 class _FitnessNewsView extends StatelessWidget {
   const _FitnessNewsView({Key? key}) : super(key: key);
 
@@ -116,7 +135,6 @@ class _FitnessNewsView extends StatelessWidget {
   }
 
   Widget _buildBody() {
-    // Escuchamos al Bloc Remoto para pintar la lista
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, state) {
         if (state is RemoteArticlesLoading) {
@@ -142,16 +160,9 @@ class _FitnessNewsView extends StatelessWidget {
           article: articles[index],
           onArticlePressed: (article) => _onArticlePressed(context, article),
 
-          // Lógica de Guardado (Marcador)
           onBookmarkPressed: (article, isSaved) {
-            // Nota: Aquí en el futuro agregaremos la validación de Auth
-            // Para "Maximally Overdeliver", el botón debería pedir login si es Guest.
-            // Por ahora mantenemos la lógica local funcional.
-            
             if (isSaved) {
-              // CASO 1: El usuario lo marcó -> GUARDAR
               context.read<LocalArticleBloc>().add(SaveArticle(article));
-
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Guardado en favoritos'),
@@ -159,7 +170,6 @@ class _FitnessNewsView extends StatelessWidget {
                 ),
               );
             } else {
-              // CASO 2: El usuario lo desmarcó -> BORRAR
               context.read<LocalArticleBloc>().add(RemoveArticle(article));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -170,7 +180,6 @@ class _FitnessNewsView extends StatelessWidget {
             }
           },
 
-          // Acción de Like (Pulgar Arriba)
           onLikePressed: (article) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(

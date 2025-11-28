@@ -6,6 +6,7 @@ import '../../../../core/constants/constants.dart';
 class ArticleModel extends ArticleEntity {
   const ArticleModel({
     int? id,
+    String? userId,
     String? author,
     String? title,
     String? description,
@@ -19,6 +20,7 @@ class ArticleModel extends ArticleEntity {
     bool? isSaved,
   }): super(
     id: id,
+    userId: userId,
     author: author,
     title: title,
     description: description,
@@ -34,6 +36,7 @@ class ArticleModel extends ArticleEntity {
 
   factory ArticleModel.fromJson(Map < String, dynamic > map) {
     return ArticleModel(
+      userId: map['userId'] ?? "",
       author: map['author'] ?? "",
       title: map['title'] ?? "",
       description: map['description'] ?? "",
@@ -52,6 +55,7 @@ class ArticleModel extends ArticleEntity {
   factory ArticleModel.fromEntity(ArticleEntity entity) {
     return ArticleModel(
       id: entity.id,
+      userId: entity.userId,
       author: entity.author,
       title: entity.title,
       description: entity.description,

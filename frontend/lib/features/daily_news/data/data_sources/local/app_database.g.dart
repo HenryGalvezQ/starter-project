@@ -96,7 +96,7 @@ class _$AppDatabase extends AppDatabase {
       },
       onCreate: (database, version) async {
         await database.execute(
-            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, PRIMARY KEY (`url`))');
+            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `userId` TEXT, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, PRIMARY KEY (`url`))');
 
         await callback?.onCreate?.call(database, version);
       },
@@ -120,6 +120,7 @@ class _$ArticleDao extends ArticleDao {
             'article',
             (ArticleModel item) => <String, Object?>{
                   'id': item.id,
+                  'userId': item.userId,
                   'author': item.author,
                   'title': item.title,
                   'description': item.description,
@@ -139,6 +140,7 @@ class _$ArticleDao extends ArticleDao {
             ['url'],
             (ArticleModel item) => <String, Object?>{
                   'id': item.id,
+                  'userId': item.userId,
                   'author': item.author,
                   'title': item.title,
                   'description': item.description,
@@ -164,10 +166,11 @@ class _$ArticleDao extends ArticleDao {
   final DeletionAdapter<ArticleModel> _articleModelDeletionAdapter;
 
   @override
-  Future<List<ArticleModel>> getArticles() async {
+  Future<List<ArticleModel>> getAllArticles() async {
     return _queryAdapter.queryList('SELECT * FROM article',
         mapper: (Map<String, Object?> row) => ArticleModel(
             id: row['id'] as int?,
+            userId: row['userId'] as String?,
             author: row['author'] as String?,
             title: row['title'] as String?,
             description: row['description'] as String?,
@@ -187,6 +190,7 @@ class _$ArticleDao extends ArticleDao {
     return _queryAdapter.query('SELECT * FROM article WHERE url = ?1',
         mapper: (Map<String, Object?> row) => ArticleModel(
             id: row['id'] as int?,
+            userId: row['userId'] as String?,
             author: row['author'] as String?,
             title: row['title'] as String?,
             description: row['description'] as String?,
@@ -203,11 +207,12 @@ class _$ArticleDao extends ArticleDao {
   }
 
   @override
-  Future<List<ArticleModel>> getPendingArticles() async {
+  Future<List<ArticleModel>> getArticlesByUser(String userId) async {
     return _queryAdapter.queryList(
-        'SELECT * FROM article WHERE syncStatus = \'pending\'',
+        'SELECT * FROM article WHERE userId = ?1 ORDER BY publishedAt DESC',
         mapper: (Map<String, Object?> row) => ArticleModel(
             id: row['id'] as int?,
+            userId: row['userId'] as String?,
             author: row['author'] as String?,
             title: row['title'] as String?,
             description: row['description'] as String?,
@@ -219,7 +224,52 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0));
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+        arguments: [userId]);
+  }
+
+  @override
+  Future<List<ArticleModel>> getPendingArticlesByUser(String userId) async {
+    return _queryAdapter.queryList(
+        'SELECT * FROM article WHERE syncStatus = \'pending\' AND userId = ?1',
+        mapper: (Map<String, Object?> row) => ArticleModel(
+            id: row['id'] as int?,
+            userId: row['userId'] as String?,
+            author: row['author'] as String?,
+            title: row['title'] as String?,
+            description: row['description'] as String?,
+            url: row['url'] as String?,
+            urlToImage: row['urlToImage'] as String?,
+            publishedAt: row['publishedAt'] as String?,
+            content: row['content'] as String?,
+            likesCount: row['likesCount'] as int?,
+            syncStatus: row['syncStatus'] as String?,
+            localImagePath: row['localImagePath'] as String?,
+            isSaved:
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+        arguments: [userId]);
+  }
+
+  @override
+  Future<List<ArticleModel>> getSavedArticlesByUser(String userId) async {
+    return _queryAdapter.queryList(
+        'SELECT * FROM article WHERE isSaved = 1 AND userId = ?1',
+        mapper: (Map<String, Object?> row) => ArticleModel(
+            id: row['id'] as int?,
+            userId: row['userId'] as String?,
+            author: row['author'] as String?,
+            title: row['title'] as String?,
+            description: row['description'] as String?,
+            url: row['url'] as String?,
+            urlToImage: row['urlToImage'] as String?,
+            publishedAt: row['publishedAt'] as String?,
+            content: row['content'] as String?,
+            likesCount: row['likesCount'] as int?,
+            syncStatus: row['syncStatus'] as String?,
+            localImagePath: row['localImagePath'] as String?,
+            isSaved:
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+        arguments: [userId]);
   }
 
   @override
@@ -233,22 +283,8 @@ class _$ArticleDao extends ArticleDao {
   }
 
   @override
-  Future<List<ArticleModel>> getSavedArticles() async {
-    return _queryAdapter.queryList('SELECT * FROM article WHERE isSaved = 1',
-        mapper: (Map<String, Object?> row) => ArticleModel(
-            id: row['id'] as int?,
-            author: row['author'] as String?,
-            title: row['title'] as String?,
-            description: row['description'] as String?,
-            url: row['url'] as String?,
-            urlToImage: row['urlToImage'] as String?,
-            publishedAt: row['publishedAt'] as String?,
-            content: row['content'] as String?,
-            likesCount: row['likesCount'] as int?,
-            syncStatus: row['syncStatus'] as String?,
-            localImagePath: row['localImagePath'] as String?,
-            isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0));
+  Future<void> deleteAllArticles() async {
+    await _queryAdapter.queryNoReturn('DELETE FROM article');
   }
 
   @override
