@@ -6,16 +6,17 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 // Imports de Lógica Remota (Feed de Noticias)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_state.dart';
-import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_event.dart'; // NECESARIO PARA GetArticles
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_event.dart';
 
 // Imports de Lógica Local (Guardar Artículos)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_event.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_state.dart'; // NUEVO: Necesario para el BlocBuilder anidado
 
 // Imports de Mis Reportes (Para recargar al cambiar sesión)
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
-import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart'; // IMPORTANTE
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart';
 
 // Imports de Autenticación
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
@@ -44,7 +45,8 @@ class DailyNews extends HookWidget {
           // Si entra un nuevo usuario, recargamos datos personales
           print("🔄 UI: Sesión iniciada. Recargando datos para ${authState.user?.email}");
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
-          context.read<LocalArticleBloc>().add(const SyncSavedArticles());
+          // CRÍTICO: Recargar favoritos para que el Feed se sincronice al entrar
+          context.read<LocalArticleBloc>().add(const GetSavedArticles());
         } 
         else if (authState is Unauthenticated) {
           // Al salir, volvemos al tab inicial
@@ -62,7 +64,7 @@ class DailyNews extends HookWidget {
             // Escuchar si la sincronización termina con éxito
             BlocListener<MyArticlesBloc, MyArticlesState>(
               listener: (context, state) {
-                if (state is MyArticlesSyncSuccess) {
+                 if (state is MyArticlesSyncSuccess) {
                   print("🔄 FEED EVENT: Sincronización completada. Recargando noticias globales...");
                   // MAGIA: Disparamos la recarga del Feed Global automáticamente
                   context.read<RemoteArticlesBloc>().add(const GetArticles());
@@ -97,7 +99,7 @@ class DailyNews extends HookWidget {
               selectedItemColor: Colors.black,
               unselectedItemColor: Colors.grey,
               showUnselectedLabels: true,
-              type: BottomNavigationBarType.fixed, // Necesario para que se vean bien 4 items
+              type: BottomNavigationBarType.fixed, 
               items: const [
                 BottomNavigationBarItem(
                   icon: Icon(Icons.fitness_center),
@@ -124,7 +126,7 @@ class DailyNews extends HookWidget {
   }
 }
 
-// Vista interna para el Feed de Noticias (Sin cambios)
+// Vista interna para el Feed de Noticias
 class _FitnessNewsView extends StatelessWidget {
   const _FitnessNewsView({Key? key}) : super(key: key);
 
@@ -146,25 +148,41 @@ class _FitnessNewsView extends StatelessWidget {
   }
 
   Widget _buildBody() {
+    // 1. Escuchamos el Feed Remoto
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
-      builder: (context, state) {
-        if (state is RemoteArticlesLoading) {
+      builder: (context, remoteState) {
+        if (remoteState is RemoteArticlesLoading) {
           return const Center(child: CupertinoActivityIndicator());
         }
-        if (state is RemoteArticlesError) {
+        if (remoteState is RemoteArticlesError) {
           return const Center(child: Icon(Icons.refresh));
         }
-        if (state is RemoteArticlesDone) {
-          // NUEVO: Envolvemos la lista en RefreshIndicator
-          return RefreshIndicator(
-            onRefresh: () async {
-              // Dispara el evento al Bloc para traer noticias nuevas
-              context.read<RemoteArticlesBloc>().add(const GetArticles());
-              // Esperamos un poco para UX (opcional, el bloc maneja estados)
-              await Future.delayed(const Duration(seconds: 1));
+        if (remoteState is RemoteArticlesDone) {
+          
+          // 2. CORRECCIÓN CRÍTICA: Anidamos LocalArticleBloc
+          // Esto permite comparar las noticias remotas con la DB local
+          return BlocBuilder<LocalArticleBloc, LocalArticlesState>(
+            builder: (context, localState) {
+              
+              // Obtenemos la lista actual de favoritos
+              List<ArticleEntity> savedArticles = [];
+              if (localState is LocalArticlesDone && localState.articles != null) {
+                savedArticles = localState.articles!;
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  // Refrescamos ambos orígenes de datos
+                  context.read<RemoteArticlesBloc>().add(const GetArticles());
+                  context.read<LocalArticleBloc>().add(const GetSavedArticles());
+                  
+                  await Future.delayed(const Duration(seconds: 1));
+                },
+                color: Colors.black,
+                // Pasamos ambas listas al constructor
+                child: _buildArticlesList(context, remoteState.articles!, savedArticles),
+              );
             },
-            color: Colors.black,
-            child: _buildArticlesList(context, state.articles!),
           );
         }
         return const SizedBox();
@@ -173,18 +191,37 @@ class _FitnessNewsView extends StatelessWidget {
   }
 
   Widget _buildArticlesList(
-      BuildContext context, List<ArticleEntity> articles) {
+      BuildContext context, 
+      List<ArticleEntity> articles, 
+      List<ArticleEntity> savedArticles // Nuevo argumento
+  ) {
     return ListView.builder(
       itemCount: articles.length,
       itemBuilder: (context, index) {
+        final article = articles[index];
+
+        // LÓGICA DE SINCRONIZACIÓN:
+        // Verificamos si esta URL ya existe en mis favoritos locales.
+        final bool isSaved = savedArticles.any((saved) => saved.url == article.url);
+
         return ArticleWidget(
-          article: articles[index],
+          // TRUCO DE INGENIERÍA:
+          // Usamos una ValueKey compuesta. Si el estado 'isSaved' cambia (ej: borrado desde otra tab),
+          // la Key cambia, forzando a Flutter a reconstruir el Widget desde cero y reiniciar sus Hooks.
+          key: ValueKey("${article.url}_$isSaved"),
+
+          article: article,
+          
+          // Inyectamos la verdad de la base de datos
+          isSavedInitially: isSaved, 
+
           onArticlePressed: (article) => _onArticlePressed(context, article),
 
           // Lógica de Guardado (Marcador)
-          onBookmarkPressed: (article, isSaved) {
-            if (isSaved) {
-              // CASO 1: El usuario lo marcó -> GUARDAR
+          onBookmarkPressed: (article, isSavedNow) {
+            // isSavedNow viene del switch interno del widget.
+            if (isSavedNow) {
+              // Si el usuario activó el switch -> GUARDAR
               context.read<LocalArticleBloc>().add(SaveArticle(article));
 
               ScaffoldMessenger.of(context).showSnackBar(
@@ -194,7 +231,7 @@ class _FitnessNewsView extends StatelessWidget {
                 ),
               );
             } else {
-              // CASO 2: El usuario lo desmarcó -> BORRAR
+              // Si el usuario desactivó el switch -> BORRAR
               context.read<LocalArticleBloc>().add(RemoveArticle(article));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

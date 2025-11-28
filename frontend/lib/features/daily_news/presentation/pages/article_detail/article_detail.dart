@@ -6,6 +6,7 @@ import '../../../../../injection_container.dart';
 import '../../../domain/entities/article.dart';
 import '../../bloc/article/local/local_article_bloc.dart';
 import '../../bloc/article/local/local_article_event.dart';
+import '../../bloc/article/local/local_article_state.dart'; // NECESARIO
 
 class ArticleDetailsView extends HookWidget {
   final ArticleEntity? article;
@@ -14,15 +15,14 @@ class ArticleDetailsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    // HOOKS: Estados locales
-    final isSaved = useState(false);
+    // HOOKS: Solo para Likes
     final isLiked = useState(false);
     final likeCount = useState(article!.likesCount ?? 0);
 
     return Scaffold(
       appBar: _buildAppBar(context),
       body: _buildBody(context, isLiked, likeCount),
-      floatingActionButton: _buildFloatingActionButton(context, isSaved),
+      floatingActionButton: _buildFloatingActionButton(context),
     );
   }
 
@@ -56,17 +56,14 @@ class ArticleDetailsView extends HookWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TITULO
           Text(
             article!.title!,
             style: const TextStyle(fontFamily: 'Butler', fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
 
-          // NUEVO: AUTOR Y CATEGORÍA (Chip)
           Row(
             children: [
-              // Categoría Chip
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -79,7 +76,6 @@ class ArticleDetailsView extends HookWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              // Autor
               Expanded(
                 child: Text(
                   "Por ${article!.author ?? 'Redacción'}",
@@ -92,11 +88,9 @@ class ArticleDetailsView extends HookWidget {
 
           const SizedBox(height: 14),
           
-          // ROW: FECHA + LIKES
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // FECHA
               Row(
                 children: [
                   const Icon(Ionicons.time_outline, size: 16),
@@ -108,7 +102,6 @@ class ArticleDetailsView extends HookWidget {
                 ],
               ),
               
-              // LIKES (Interactivo)
               Row(
                 children: [
                   Text(
@@ -156,7 +149,6 @@ class ArticleDetailsView extends HookWidget {
         article!.urlToImage!,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          // CORRECCIÓN: Container no es const
           return Container(
               height: 250,
               color: Colors.grey,
@@ -170,7 +162,6 @@ class ArticleDetailsView extends HookWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
       child: Text(
-        // CORRECCIÓN: Solo mostramos contenido. Si es null, mostramos la descripción como fallback.
         article!.content != null && article!.content!.isNotEmpty 
             ? article!.content! 
             : article!.description ?? '',
@@ -179,29 +170,40 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  // BOTÓN GUARDAR (FAB)
-  Widget _buildFloatingActionButton(BuildContext context, ValueNotifier<bool> isSaved) {
-    return FloatingActionButton(
-      backgroundColor: isSaved.value ? Colors.orange : Colors.blueAccent,
-      onPressed: () {
-        if (isSaved.value) {
-          context.read<LocalArticleBloc>().add(RemoveArticle(article!));
-          isSaved.value = false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
-          );
-        } else {
-          context.read<LocalArticleBloc>().add(SaveArticle(article!));
-          isSaved.value = true;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Guardado en favoritos'), duration: Duration(milliseconds: 500)),
-          );
+  // BOTÓN GUARDAR (FAB) - SWITCH GLOBAL
+  Widget _buildFloatingActionButton(BuildContext context) {
+    // Usamos BlocBuilder para escuchar la verdad absoluta de la BD
+    return BlocBuilder<LocalArticleBloc, LocalArticlesState>(
+      builder: (context, state) {
+        // Verificar si este artículo ya está guardado
+        bool isActuallySaved = false;
+        if (state is LocalArticlesDone && state.articles != null) {
+           isActuallySaved = state.articles!.any((element) => element.url == article!.url);
         }
+
+        return FloatingActionButton(
+          backgroundColor: isActuallySaved ? Colors.orange : Colors.blueAccent,
+          onPressed: () {
+            if (isActuallySaved) {
+              // Si ya está guardado -> BORRAR
+              context.read<LocalArticleBloc>().add(RemoveArticle(article!));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
+              );
+            } else {
+              // Si no está guardado -> GUARDAR
+              context.read<LocalArticleBloc>().add(SaveArticle(article!));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Guardado en favoritos'), duration: Duration(milliseconds: 500)),
+              );
+            }
+          },
+          child: Icon(
+            isActuallySaved ? Ionicons.bookmark : Ionicons.bookmark_outline,
+            color: Colors.white,
+          ),
+        );
       },
-      child: Icon(
-        isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
-        color: Colors.white,
-      ),
     );
   }
 
