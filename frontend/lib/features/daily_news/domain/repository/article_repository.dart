@@ -24,4 +24,6 @@ abstract class ArticleRepository {
   Future<void> createLocalArticle(ArticleEntity article);
 
   Future<void> clearLocalData();
+
+  Future<void> syncSavedArticles(); // Traer favoritos de la nube
 }

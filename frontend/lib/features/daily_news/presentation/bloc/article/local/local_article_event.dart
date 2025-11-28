@@ -22,3 +22,6 @@ class RemoveArticle extends LocalArticlesEvent {
 class SaveArticle extends LocalArticlesEvent {
   const SaveArticle(ArticleEntity article) : super(article: article);
 }
+class SyncSavedArticles extends LocalArticlesEvent {
+  const SyncSavedArticles();
+}

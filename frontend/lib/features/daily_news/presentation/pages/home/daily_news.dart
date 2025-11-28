@@ -44,7 +44,7 @@ class DailyNews extends HookWidget {
           // Si entra un nuevo usuario, recargamos datos personales
           print("🔄 UI: Sesión iniciada. Recargando datos para ${authState.user?.email}");
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
-          context.read<LocalArticleBloc>().add(const GetSavedArticles());
+          context.read<LocalArticleBloc>().add(const SyncSavedArticles());
         } 
         else if (authState is Unauthenticated) {
           // Al salir, volvemos al tab inicial

@@ -62,18 +62,18 @@ class ArticleRepositoryImpl implements ArticleRepository {
     return _appDatabase.articleDAO.getSavedArticlesByUser(user.uid);
   }
 
-  @override
-  Future<void> saveArticle(ArticleEntity article) {
+@override
+  Future<void> saveArticle(ArticleEntity article) async {
     final user = _auth.currentUser;
     
-    // DATA ISOLATION: Guardamos el favorito firmado con el UID actual
+    // 1. LOCAL: Guardamos en Floor (Siempre funciona, con o sin internet)
     final model = ArticleModel(
-      userId: user?.uid, // <--- CRÍTICO
+      userId: user?.uid,
       id: article.id,
       author: article.author,
       title: article.title,
       description: article.description,
-      url: article.url,
+      url: article.url, // Usamos esto como ID único
       urlToImage: article.urlToImage,
       publishedAt: article.publishedAt,
       content: article.content,
@@ -83,13 +83,68 @@ class ArticleRepositoryImpl implements ArticleRepository {
       isSaved: true,
       category: article.category ?? 'General',
     );
-    return _appDatabase.articleDAO.insertArticle(model);
+    
+    await _appDatabase.articleDAO.insertArticle(model);
+
+    // 2. CLOUD: Si estamos logueados, guardamos la referencia en Firestore
+    if (user != null && article.url != null) {
+      try {
+        // Usamos encodeURIComponent o hash si la URL tiene caracteres raros, 
+        // pero por simplicidad usaremos la URL tal cual como ID del documento si es segura,
+        // o mejor, dejamos que Firestore genere el ID y guardamos la URL como campo.
+        // ESTRATEGIA: Usar la URL como ID del documento requiere que sea válida para rutas.
+        // Para evitar errores de caracteres invalidos en rutas URL, usaremos un hash o ID limpio.
+        // Pero como tus URLs generadas son "symmetry://...", son seguras excepto por los slashes.
+        // MEJOR OPCIÓN: Guardar el documento usando un ID generado o limpiado.
+        // Para este MVP, guardaremos un documento con el campo 'articleUrl'.
+        
+        // Referencia: users/{uid}/saved_articles/{article_url_safe}
+        // Truco: Reemplazamos / por _ para usarlo como ID de documento
+        final safeId = article.url!.replaceAll('/', '_').replaceAll(':', '_');
+
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('saved_articles')
+            .doc(safeId) // ID del documento = URL "sanitizada"
+            .set({
+              'articleUrl': article.url,
+              'savedAt': FieldValue.serverTimestamp(),
+              'title': article.title, // Guardamos título para referencia rápida en consola
+            });
+            
+        print("☁️ CLOUD: Artículo guardado en perfil de usuario.");
+      } catch (e) {
+        print("⚠️ CLOUD SAVE ERROR: $e (Pero se guardó localmente)");
+        // No lanzamos excepción para no romper la UX local
+      }
+    }
   }
 
   @override
-  Future<void> removeArticle(ArticleEntity article) {
-    // Para borrar, convertimos a modelo. Floor usa la PrimaryKey (url) para borrar.
-    return _appDatabase.articleDAO.deleteArticle(ArticleModel.fromEntity(article));
+  Future<void> removeArticle(ArticleEntity article) async {
+    final user = _auth.currentUser;
+
+    // 1. LOCAL
+    await _appDatabase.articleDAO.deleteArticle(ArticleModel.fromEntity(article));
+
+    // 2. CLOUD
+    if (user != null && article.url != null) {
+      try {
+        final safeId = article.url!.replaceAll('/', '_').replaceAll(':', '_');
+        
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('saved_articles')
+            .doc(safeId)
+            .delete();
+            
+        print("☁️ CLOUD: Artículo eliminado del perfil.");
+      } catch (e) {
+        print("⚠️ CLOUD REMOVE ERROR: $e");
+      }
+    }
   }
 
   // --- MÉTODOS OFFLINE-FIRST ---
@@ -221,5 +276,94 @@ class ArticleRepositoryImpl implements ArticleRepository {
   Future<void> clearLocalData() async {
     await _appDatabase.articleDAO.deleteAllArticles();
     print("🗑️ LOCAL DATA: Base de datos limpiada.");
+  }
+  
+  @override
+  Future<void> syncSavedArticles() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    print("SYNC: Descargando favoritos de la nube...");
+
+    try {
+      // 1. Obtener lista de IDs guardados por el usuario
+      final savedSnapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('saved_articles')
+          .get();
+
+      if (savedSnapshot.docs.isEmpty) return;
+
+      // 2. Para cada guardado, asegurar que esté en local
+      for (final doc in savedSnapshot.docs) {
+        final articleUrl = doc.data()['articleUrl'] as String?;
+        if (articleUrl == null) continue;
+
+        // A. Verificar si ya lo tenemos en local
+        final localArticle = await _appDatabase.articleDAO.findArticleByUrl(articleUrl);
+        
+        if (localArticle != null) {
+          // Si existe, solo actualizamos el flag isSaved
+          if (localArticle.isSaved != true) {
+             // Truco: Re-insertar con isSaved=true (OnConflict.replace actualiza)
+             final updated = ArticleModel(
+                userId: user.uid, // Aseguramos propiedad
+                id: localArticle.id,
+                author: localArticle.author,
+                title: localArticle.title,
+                description: localArticle.description,
+                url: localArticle.url,
+                urlToImage: localArticle.urlToImage,
+                publishedAt: localArticle.publishedAt,
+                content: localArticle.content,
+                likesCount: localArticle.likesCount,
+                syncStatus: localArticle.syncStatus,
+                localImagePath: localArticle.localImagePath,
+                category: localArticle.category,
+                isSaved: true, // <--- ACTIVAMOS
+             );
+             await _appDatabase.articleDAO.insertArticle(updated);
+          }
+        } else {
+          // B. Si NO existe en local, hay que descargarlo de la colección 'articles'
+          // (Esta es la parte difícil: buscar por URL en Firestore)
+          final articleQuery = await _firestore
+              .collection('articles')
+              .where('url', isEqualTo: articleUrl)
+              .limit(1)
+              .get();
+
+          if (articleQuery.docs.isNotEmpty) {
+            final articleData = articleQuery.docs.first.data();
+            articleData['syncStatus'] = 'synced'; // Viene de nube
+            
+            // Mapeamos a modelo
+            var newModel = ArticleModel.fromJson(articleData);
+            
+            // Forzamos campos locales
+            newModel = ArticleModel(
+                userId: user.uid, // Asignamos al usuario actual para que lo vea
+                url: newModel.url,
+                author: newModel.author,
+                title: newModel.title,
+                description: newModel.description,
+                content: newModel.content,
+                urlToImage: newModel.urlToImage,
+                publishedAt: newModel.publishedAt,
+                likesCount: newModel.likesCount,
+                category: newModel.category,
+                syncStatus: 'synced',
+                isSaved: true, // <--- IMPORTANTE
+            );
+            
+            await _appDatabase.articleDAO.insertArticle(newModel);
+            print("SYNC: Favorito descargado -> ${newModel.title}");
+          }
+        }
+      }
+    } catch (e) {
+      print("SYNC SAVED ERROR: $e");
+    }
   }
 }

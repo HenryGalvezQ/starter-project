@@ -21,6 +21,7 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/clear_local_data.dart';
 import 'features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/create_article.dart'; // Importar
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_saved_articles.dart'; // Import
 // Features - Auth
 import 'package:news_app_clean_architecture/features/auth/data/repository/auth_repository_impl.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/repository/auth_repository.dart';
@@ -32,6 +33,7 @@ import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth
 
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/clear_local_data.dart';
 final sl = GetIt.instance;
+
 
 Future<void> initializeDependencies() async {
   
@@ -95,6 +97,9 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<ClearLocalDataUseCase>(
   ClearLocalDataUseCase(sl())
   );
+  sl.registerSingleton<SyncSavedArticlesUseCase>(
+  SyncSavedArticlesUseCase(sl())
+  );
 
   // Auth
   sl.registerSingleton<GetAuthStateUseCase>(GetAuthStateUseCase(sl()));
@@ -110,7 +115,7 @@ Future<void> initializeDependencies() async {
   
   // Local Articles
   sl.registerFactory<LocalArticleBloc>(
-    ()=> LocalArticleBloc(sl(),sl(),sl())
+    ()=> LocalArticleBloc(sl(),sl(),sl(),sl())
   );
 
   // Auth Bloc - ACTUALIZADO FASE 7 (5 Argumentos)
@@ -121,4 +126,5 @@ Future<void> initializeDependencies() async {
   sl.registerFactory<MyArticlesBloc>(
   () => MyArticlesBloc(sl(), sl(), sl())
   );
+
 }

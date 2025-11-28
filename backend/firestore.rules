@@ -17,6 +17,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true; // Perfiles públicos (opcional, según diseño)
       allow write: if isAuthenticated() && isOwner(userId);
+    
+
+      // [NUEVO] Sub-colección: Guardados
+      // Solo el dueño puede ver y editar sus guardados
+      match /saved_articles/{document=**} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
     }
 
     // Reglas para los artículos (Noticias)
