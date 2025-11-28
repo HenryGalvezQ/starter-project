@@ -18,6 +18,7 @@ class ArticleModel extends ArticleEntity {
     String? syncStatus,
     String? localImagePath,
     bool? isSaved,
+    String? category,
   }): super(
     id: id,
     userId: userId,
@@ -32,6 +33,7 @@ class ArticleModel extends ArticleEntity {
     syncStatus: syncStatus,
     localImagePath: localImagePath,
     isSaved: isSaved,
+    category: category,
   );
 
   factory ArticleModel.fromJson(Map < String, dynamic > map) {
@@ -49,6 +51,7 @@ class ArticleModel extends ArticleEntity {
       syncStatus: map['syncStatus'] ?? 'synced', 
       localImagePath: null, 
       isSaved: false, 
+      category: map['category'] ?? "General",
     );
   }
 
@@ -67,6 +70,7 @@ class ArticleModel extends ArticleEntity {
       syncStatus: entity.syncStatus,
       localImagePath: entity.localImagePath,
       isSaved: entity.isSaved,
+      category: entity.category,
     );
   }
 }

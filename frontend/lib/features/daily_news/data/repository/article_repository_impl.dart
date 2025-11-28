@@ -128,12 +128,17 @@ class ArticleRepositoryImpl implements ArticleRepository {
   @override
   Future<void> createLocalArticle(ArticleEntity article) {
     final user = _auth.currentUser;
+    // Si displayName es null, usamos el email, o un default
+    final String authorName = user?.displayName != null && user!.displayName!.isNotEmpty 
+        ? user.displayName! 
+        : (user?.email?.split('@')[0] ?? "Symmetry Reporter");
 
     // DATA ISOLATION: El reporte nace firmado por el autor
     final model = ArticleModel(
       userId: user?.uid, // <--- CRÍTICO
       url: article.url, 
-      author: user?.displayName ?? article.author, // Usamos nombre real del Auth
+      author: authorName,
+      category: article.category ?? 'General',
       title: article.title,
       description: article.description,
       content: article.content,
@@ -188,13 +193,13 @@ class ArticleRepositoryImpl implements ArticleRepository {
         
         await docRef.set({
           'userId': user.uid, // Firma en la nube
-          'author': user.displayName ?? "Symmetry Journalist",
+          'author': article.author,
           'title': article.title,
           'description': article.description,
+          'category': article.category ?? 'General',
           'content': article.content,
           'publishedAt': article.publishedAt,
           'urlToImage': imageUrl,
-          'category': 'general', 
           'likesCount': 0,
           'syncStatus': 'synced',
           'url': 'symmetry://article/${docRef.id}' 

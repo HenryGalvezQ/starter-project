@@ -96,7 +96,7 @@ class _$AppDatabase extends AppDatabase {
       },
       onCreate: (database, version) async {
         await database.execute(
-            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `userId` TEXT, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, PRIMARY KEY (`url`))');
+            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `userId` TEXT, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `category` TEXT, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, PRIMARY KEY (`url`))');
 
         await callback?.onCreate?.call(database, version);
       },
@@ -129,6 +129,7 @@ class _$ArticleDao extends ArticleDao {
                   'publishedAt': item.publishedAt,
                   'content': item.content,
                   'likesCount': item.likesCount,
+                  'category': item.category,
                   'syncStatus': item.syncStatus,
                   'localImagePath': item.localImagePath,
                   'isSaved':
@@ -149,6 +150,7 @@ class _$ArticleDao extends ArticleDao {
                   'publishedAt': item.publishedAt,
                   'content': item.content,
                   'likesCount': item.likesCount,
+                  'category': item.category,
                   'syncStatus': item.syncStatus,
                   'localImagePath': item.localImagePath,
                   'isSaved':
@@ -182,7 +184,8 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0));
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            category: row['category'] as String?));
   }
 
   @override
@@ -202,7 +205,8 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            category: row['category'] as String?),
         arguments: [url]);
   }
 
@@ -224,7 +228,8 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            category: row['category'] as String?),
         arguments: [userId]);
   }
 
@@ -246,7 +251,8 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            category: row['category'] as String?),
         arguments: [userId]);
   }
 
@@ -268,7 +274,8 @@ class _$ArticleDao extends ArticleDao {
             syncStatus: row['syncStatus'] as String?,
             localImagePath: row['localImagePath'] as String?,
             isSaved:
-                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0),
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            category: row['category'] as String?),
         arguments: [userId]);
   }
 

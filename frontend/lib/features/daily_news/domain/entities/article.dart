@@ -11,6 +11,7 @@ class ArticleEntity extends Equatable {
   final String? publishedAt;
   final String? content;
   final int? likesCount;
+  final String? category;
   
   // NUEVOS CAMPOS OFFLINE-FIRST
   final String? syncStatus; // 'pending', 'synced'
@@ -31,6 +32,7 @@ class ArticleEntity extends Equatable {
     this.syncStatus,
     this.localImagePath,
     this.isSaved,
+    this.category,
   });
 
   @override
@@ -49,6 +51,7 @@ class ArticleEntity extends Equatable {
       syncStatus,
       localImagePath,
       isSaved,
+      category,
     ];
   }
 }
