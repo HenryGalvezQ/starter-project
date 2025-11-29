@@ -155,7 +155,30 @@ class ArticleWidget extends HookWidget {
                 ),
               ),
             ),
-
+            // 3. AUTOR (Corregido: Ubicado justo encima de la barra de fecha/acción)
+            if (article?.author != null && article!.author!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4, top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Ionicons.person, size: 12, color: Colors.blueAccent),
+                    const SizedBox(width: 4),
+                    // Usamos Flexible para evitar desbordamiento
+                    Flexible(
+                      child: Text(
+                        article!.author!.toUpperCase(), 
+                        style: const TextStyle(
+                          fontSize: 10, 
+                          color: Colors.blueAccent, 
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             // BARRA DE ACCIÓN
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

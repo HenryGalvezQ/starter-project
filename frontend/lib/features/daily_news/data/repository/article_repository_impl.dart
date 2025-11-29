@@ -609,6 +609,11 @@ class ArticleRepositoryImpl implements ArticleRepository {
       print("TRANSACTION ERROR: $e");
     }
   }
+
+    @override
+  Future<List<ArticleEntity>> searchLocalArticles(String query) async {
+    return _appDatabase.articleDAO.searchArticles(query);
+  }
 }
 
 // Extensión para copyWith (Ayuda a copiar objetos inmutables)
@@ -638,4 +643,6 @@ extension ArticleModelCopyWith on ArticleModel {
       category: category ?? this.category,
     );
   }
+
+  
 }

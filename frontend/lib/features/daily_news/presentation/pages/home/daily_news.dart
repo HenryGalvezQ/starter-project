@@ -155,16 +155,111 @@ class DailyNews extends HookWidget {
   }
 }
 
-class _FitnessNewsView extends StatelessWidget {
+class _FitnessNewsView extends HookWidget {
   const _FitnessNewsView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // ESTADOS
+    final isSearching = useState(false);
+    final selectedFilter = useState<SearchFilter>(SearchFilter.all);
+    final searchController = useTextEditingController();
+
+    // Trigger de búsqueda al cambiar filtro o texto
+    void triggerSearch() {
+      context.read<RemoteArticlesBloc>().add(
+        SearchArticles(
+          query: searchController.text,
+          filter: selectedFilter.value
+        )
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Fitness News', style: TextStyle(color: Colors.black)),
+        // LOGICA DE CAMBIO DE TÍTULO A INPUT
+        title: isSearching.value
+            ? TextField(
+                controller: searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.black),
+                decoration: InputDecoration(
+                  hintText: 'Buscar por ${selectedFilter.value.name}...',
+                  border: InputBorder.none,
+                  hintStyle: const TextStyle(color: Colors.grey),
+                ),
+                onChanged: (query) => triggerSearch(),
+              )
+            : const Text('Fitness News', style: TextStyle(color: Colors.black)),
+        
+        actions: [
+          IconButton(
+            icon: Icon(
+              isSearching.value ? Icons.close : Icons.search,
+              color: Colors.black,
+            ),
+            onPressed: () {
+              if (isSearching.value) {
+                // AL CERRAR:
+                isSearching.value = false;
+                searchController.clear();
+                selectedFilter.value = SearchFilter.all; // Reset filtro
+                // Volvemos al feed normal
+                context.read<RemoteArticlesBloc>().add(const GetArticles());
+              } else {
+                // AL ABRIR:
+                isSearching.value = true;
+              }
+            },
+          )
+        ],
+        // BARRA DE FILTROS (Visible solo cuando se busca)
+        bottom: isSearching.value ? PreferredSize(
+          preferredSize: const Size.fromHeight(50),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                _buildFilterChip(SearchFilter.all, "Todos", selectedFilter, triggerSearch),
+                const SizedBox(width: 8),
+                _buildFilterChip(SearchFilter.title, "Título", selectedFilter, triggerSearch),
+                const SizedBox(width: 8),
+                _buildFilterChip(SearchFilter.author, "Autor", selectedFilter, triggerSearch),
+                const SizedBox(width: 8),
+                _buildFilterChip(SearchFilter.description, "Contenido", selectedFilter, triggerSearch),
+              ],
+            ),
+          ),
+        ) : null,
       ),
       body: _buildBody(),
+    );
+  }
+
+  Widget _buildFilterChip(
+    SearchFilter filter, 
+    String label, 
+    ValueNotifier<SearchFilter> currentFilter,
+    VoidCallback onUpdate
+  ) {
+    final bool isSelected = currentFilter.value == filter;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (bool selected) {
+        if (selected) {
+          currentFilter.value = filter;
+          onUpdate();
+        }
+      },
+      selectedColor: Colors.black,
+      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Colors.grey),
+      ),
     );
   }
 
@@ -190,10 +285,14 @@ class _FitnessNewsView extends StatelessWidget {
                 likedArticles = localState.likedArticles ?? [];
               }
 
+              // MENSAJE SI NO HAY RESULTADOS
+              if (remoteState.articles!.isEmpty) {
+                return const Center(child: Text("No se encontraron resultados"));
+              }
+
               return RefreshIndicator(
                 onRefresh: () async {
                   context.read<RemoteArticlesBloc>().add(const GetArticles());
-                  // Usamos SyncLocalDatabase para traer lo más fresco de la nube
                   context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
                   await Future.delayed(const Duration(seconds: 1));
                 },
@@ -219,21 +318,17 @@ class _FitnessNewsView extends StatelessWidget {
       itemBuilder: (context, index) {
         final remoteArticle = remoteArticles[index];
 
-        // 1. VERDAD ABSOLUTA BOOLEANA
         final bool isSaved = savedArticles.any((s) => s.url == remoteArticle.url);
         final bool isLiked = likedArticles.any((l) => l.url == remoteArticle.url);
 
-        // 2. BUSCAR MEJOR VERSIÓN (FIX DEL ERROR DE TIPO)
-        // Usamos .cast<ArticleEntity>() para que firstWhere acepte devolver una Entidad genérica
         final localArticle = likedArticles.cast<ArticleEntity>().firstWhere(
             (l) => l.url == remoteArticle.url, 
             orElse: () => savedArticles.cast<ArticleEntity>().firstWhere(
                 (s) => s.url == remoteArticle.url,
-                orElse: () => remoteArticle // Ahora sí es válido devolver esto
+                orElse: () => remoteArticle 
             )
         );
 
-        // 3. FRANKENSTEIN OBJECT (Inyección de Estado)
         final displayArticle = ArticleEntity(
           id: localArticle.id,
           userId: localArticle.userId,
@@ -248,7 +343,6 @@ class _FitnessNewsView extends StatelessWidget {
           syncStatus: localArticle.syncStatus,
           localImagePath: localArticle.localImagePath,
           
-          // INYECCIÓN DE ESTADO:
           likesCount: localArticle.likesCount, 
           isSaved: isSaved,  
           isLiked: isLiked,  
@@ -256,16 +350,12 @@ class _FitnessNewsView extends StatelessWidget {
 
         return ArticleWidget(
           key: ValueKey("${remoteArticle.url}_${isSaved}_${isLiked}"),
-
           article: displayArticle,
-          
           isSavedInitially: isSaved,
           isLikedInitially: isLiked, 
-
           onArticlePressed: (article) {
              _onArticlePressed(context, displayArticle);
           },
-
           onBookmarkPressed: (article, isSavedNow) {
             if (isSavedNow) {
               context.read<LocalArticleBloc>().add(SaveArticle(article));
@@ -279,7 +369,6 @@ class _FitnessNewsView extends StatelessWidget {
               );
             }
           },
-
           onLikePressed: (article) {
             final bool newStatus = !isLiked;
             context.read<LocalArticleBloc>().add(

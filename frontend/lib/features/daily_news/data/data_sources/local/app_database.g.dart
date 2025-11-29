@@ -300,6 +300,14 @@ class _$ArticleDao extends ArticleDao {
   }
 
   @override
+  Future<List<ArticleModel>> searchArticles(String query) async {
+    return _queryAdapter.queryList(
+        'SELECT * FROM article WHERE (title LIKE \'%\' || ?1 || \'%\' OR author LIKE \'%\' || ?1 || \'%\' OR description LIKE \'%\' || ?1 || \'%\' OR content LIKE \'%\' || ?1 || \'%\') AND syncStatus != \'pending_delete\' ORDER BY publishedAt DESC',
+        mapper: (Map<String, Object?> row) => ArticleModel(id: row['id'] as int?, userId: row['userId'] as String?, author: row['author'] as String?, title: row['title'] as String?, description: row['description'] as String?, url: row['url'] as String?, urlToImage: row['urlToImage'] as String?, publishedAt: row['publishedAt'] as String?, content: row['content'] as String?, likesCount: row['likesCount'] as int?, syncStatus: row['syncStatus'] as String?, localImagePath: row['localImagePath'] as String?, isSaved: row['isSaved'] == null ? null : (row['isSaved'] as int) != 0, isLiked: row['isLiked'] == null ? null : (row['isLiked'] as int) != 0, category: row['category'] as String?),
+        arguments: [query]);
+  }
+
+  @override
   Future<void> insertArticle(ArticleModel article) async {
     await _articleModelInsertionAdapter.insert(
         article, OnConflictStrategy.replace);

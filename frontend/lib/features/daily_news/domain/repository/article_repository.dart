@@ -37,4 +37,7 @@ abstract class ArticleRepository {
   Future<void> likeArticle(ArticleEntity article, bool isLiked);
   //Sincronizar likes de la nube al local al iniciar sesión
   Future<void> syncLikedArticles();
+
+  // [NUEVO] Buscar artículos localmente
+  Future<List<ArticleEntity>> searchLocalArticles(String query);
 }

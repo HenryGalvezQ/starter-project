@@ -49,4 +49,8 @@ abstract class ArticleDao {
   // [NUEVO] Obtener solo los likes de ESTE usuario
   @Query("SELECT * FROM article WHERE isLiked = 1 AND userId = :userId")
   Future<List<ArticleModel>> getLikedArticlesByUser(String userId);
+  // [NUEVO FASE 10] Buscador Full-Text (parcial)
+  // Usamos los operadores || para concatenar los % y hacer un LIKE flexible
+  @Query("SELECT * FROM article WHERE (title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') AND syncStatus != 'pending_delete' ORDER BY publishedAt DESC")
+  Future<List<ArticleModel>> searchArticles(String query);
 }

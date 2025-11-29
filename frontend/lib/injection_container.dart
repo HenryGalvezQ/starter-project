@@ -27,6 +27,7 @@ import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_liked_articles.dart'; // IMPORTAR
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/delete_article.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/update_article.dart';
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/search_articles.dart'; // IMPORTAR
 // Features - Auth
 import 'package:news_app_clean_architecture/features/auth/data/repository/auth_repository_impl.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/repository/auth_repository.dart';
@@ -117,7 +118,7 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<SyncSavedArticlesUseCase>(
   SyncSavedArticlesUseCase(sl())
   );
-
+  sl.registerSingleton<SearchArticlesUseCase>(SearchArticlesUseCase(sl()));
   // Auth
   sl.registerSingleton<GetAuthStateUseCase>(GetAuthStateUseCase(sl()));
   sl.registerSingleton<LoginUserUseCase>(LoginUserUseCase(sl()));
@@ -127,7 +128,10 @@ Future<void> initializeDependencies() async {
   // -- BLOCS --
   // Remote Articles
   sl.registerFactory<RemoteArticlesBloc>(
-    ()=> RemoteArticlesBloc(sl())
+    ()=> RemoteArticlesBloc(
+      sl(), // GetArticleUseCase
+      sl()  // SearchArticlesUseCase (NUEVO)
+    )
   );
   
   // ACTUALIZAR EL BLOC LOCAL (Ahora recibe 7 argumentos: 3 saved, 2 likes, 2 syncs)
