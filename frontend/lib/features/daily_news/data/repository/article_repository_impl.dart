@@ -17,6 +17,9 @@ class ArticleRepositoryImpl implements ArticleRepository {
   final FirebaseAuth _auth;
   final FirebaseStorage _storage;
 
+  // [NUEVO] Semáforo para evitar doble ejecución (Race Condition)
+  bool _isSyncing = false;
+
   ArticleRepositoryImpl(
     this._newsApiService, 
     this._appDatabase, 
@@ -222,130 +225,156 @@ class ArticleRepositoryImpl implements ArticleRepository {
     await _appDatabase.articleDAO.updateSyncStatus(article.url!, 'pending_delete');
   }
 
- // --- SYNC ENGINE ACTUALIZADO (BIDIRECCIONAL) ---
+  // --- SYNC ENGINE BLINDADO (Mutex Lock) ---
   @override
   Future<void> syncPendingArticles() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // ---------------------------------------------------------
-    // PASO 1: PUSH (SUBIDA) - Enviar cambios locales a la nube
-    // ---------------------------------------------------------
-    final pendingArticles = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
-
-    if (pendingArticles.isNotEmpty) {
-      print("SYNC PUSH: Procesando ${pendingArticles.length} cambios locales...");
-      
-      for (final article in pendingArticles) {
-        try {
-          // --- LÓGICA DE BORRADO ---
-          if (article.syncStatus == 'pending_delete') {
-            print("SYNC: Borrando ${article.title} de la nube...");
-            if (article.urlToImage != null && article.urlToImage!.contains('firebase')) {
-              try {
-                await _storage.refFromURL(article.urlToImage!).delete();
-              } catch (e) { print("Error borrando imagen (no crítica): $e"); }
-            }
-            final q = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
-            for (var doc in q.docs) {
-              await doc.reference.delete();
-            }
-            await _appDatabase.articleDAO.deleteArticle(article);
-            continue;
-          }
-
-          // --- LÓGICA DE CREACIÓN / EDICIÓN ---
-          String imageUrl = article.urlToImage ?? "";
-          if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
-            final file = File(article.localImagePath!);
-            if (await file.exists()) {
-              final storageRef = _storage
-                  .ref()
-                  .child('media/articles/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
-              await storageRef.putFile(
-                file,
-                SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
-              );
-              imageUrl = await storageRef.getDownloadURL();
-            }
-          }
-
-          final q = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
-          DocumentReference docRef;
-          if (q.docs.isNotEmpty) {
-             docRef = q.docs.first.reference;
-          } else {
-             docRef = _firestore.collection('articles').doc();
-          }
-
-          await docRef.set({
-            'userId': user.uid,
-            'author': article.author,
-            'title': article.title,
-            'description': article.description,
-            'category': article.category ?? 'General',
-            'content': article.content,
-            'publishedAt': article.publishedAt,
-            'urlToImage': imageUrl,
-            'likesCount': article.likesCount ?? 0,
-            'syncStatus': 'synced',
-            'url': article.url
-          }, SetOptions(merge: true));
-
-          final syncedArticle = article.copyWith(
-            urlToImage: imageUrl,
-            syncStatus: 'synced',
-            localImagePath: null 
-          );
-          await _appDatabase.articleDAO.insertArticle(syncedArticle);
-          print("SYNC PUSH: Sincronizado ${article.title}");
-
-        } catch (e) {
-          print("SYNC PUSH ERROR en ${article.title}: $e");
-        }
-      }
+    // 1. [CRÍTICO] Verificar si ya hay una sincronización en curso
+    if (_isSyncing) {
+      print("⏳ SYNC: Sincronización en curso. Ignorando llamada duplicada.");
+      return;
     }
 
-    // ---------------------------------------------------------
-    // PASO 2: PULL (BAJADA) - Traer artículos de la nube al local
-    // ---------------------------------------------------------
-    print("SYNC PULL: Buscando artículos remotos para rehidratar local...");
+    // 2. Bloquear el semáforo
+    _isSyncing = true;
+
     try {
-      final remoteSnapshot = await _firestore
-          .collection('articles')
-          .where('userId', isEqualTo: user.uid)
-          .get();
+      // ---------------------------------------------------------
+      // PASO 1: PUSH (SUBIDA) - Enviar cambios locales a la nube
+      // ---------------------------------------------------------
+      final pendingArticles = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
 
-      for (final doc in remoteSnapshot.docs) {
-        final remoteData = doc.data();
-        remoteData['syncStatus'] = 'synced'; // Vienen de la nube, así que están synced
+      if (pendingArticles.isNotEmpty) {
+        print("SYNC PUSH: Procesando ${pendingArticles.length} cambios locales...");
         
-        final remoteModel = ArticleModel.fromJson(remoteData);
+        for (final article in pendingArticles) {
+          try {
+            // --- LÓGICA DE BORRADO ---
+            if (article.syncStatus == 'pending_delete') {
+              print("SYNC: Borrando ${article.title} de la nube...");
+              
+              // Borrar imagen
+              if (article.urlToImage != null && article.urlToImage!.contains('firebase')) {
+                try {
+                  await _storage.refFromURL(article.urlToImage!).delete();
+                } catch (e) { print("Error borrando imagen (no crítica): $e"); }
+              }
+              
+              // Borrar documento(s)
+              final q = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
+              for (var doc in q.docs) {
+                await doc.reference.delete();
+              }
+              
+              // Borrar local
+              await _appDatabase.articleDAO.deleteArticle(article);
+              continue;
+            }
 
-        // Verificamos si ya lo tenemos en local
-        final localArticle = await _appDatabase.articleDAO.findArticleByUrl(remoteModel.url!);
+            // --- LÓGICA DE CREACIÓN / EDICIÓN ---
+            
+            // [FIX ADICIONAL] Doble check: Verificar si ya existe en Firestore ANTES de subir imagen
+            // Esto ayuda si el semáforo fallara por alguna razón extrema (reinicio de app a mitad de proceso)
+            final qCheck = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
+            
+            String imageUrl = article.urlToImage ?? "";
+            
+            // Subir imagen solo si es local
+            if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
+              final file = File(article.localImagePath!);
+              if (await file.exists()) {
+                // Si ya existe el doc remoto y tiene imagen, tratamos de no duplicar basura en Storage,
+                // pero por simplicidad subimos la nueva versión.
+                final storageRef = _storage
+                    .ref()
+                    .child('media/articles/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
+                
+                await storageRef.putFile(
+                  file,
+                  SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
+                );
+                imageUrl = await storageRef.getDownloadURL();
+              }
+            }
 
-        if (localArticle == null) {
-          // A. No existe en local -> LO INSERTAMOS (Rehidratación)
-          await _appDatabase.articleDAO.insertArticle(remoteModel);
-          print("SYNC PULL: Descargado ${remoteModel.title}");
-        } else {
-          // B. Ya existe. Solo sobrescribimos si el local NO tiene cambios pendientes.
-          // Si tuviéramos un cambio 'pending', NO lo tocamos para que gane tu edición local.
-          if (localArticle.syncStatus == 'synced') {
-             // Preservamos flags locales importantes que Firestore no tiene
-             final merged = remoteModel.copyWith(
-               id: localArticle.id, // Mantener ID autoincremental de Floor
-               isSaved: localArticle.isSaved, // Mantener si lo tengo en favoritos local
-               isLiked: localArticle.isLiked, // Mantener mi like local
-               localImagePath: localArticle.localImagePath // Mantener rutas de imagen si las hay
-             );
-             await _appDatabase.articleDAO.insertArticle(merged);
+            DocumentReference docRef;
+            if (qCheck.docs.isNotEmpty) {
+               docRef = qCheck.docs.first.reference;
+            } else {
+               docRef = _firestore.collection('articles').doc();
+            }
+
+            await docRef.set({
+              'userId': user.uid,
+              'author': article.author,
+              'title': article.title,
+              'description': article.description,
+              'category': article.category ?? 'General',
+              'content': article.content,
+              'publishedAt': article.publishedAt,
+              'urlToImage': imageUrl,
+              'likesCount': article.likesCount ?? 0,
+              'syncStatus': 'synced',
+              'url': article.url
+            }, SetOptions(merge: true));
+
+            final syncedArticle = article.copyWith(
+              urlToImage: imageUrl,
+              syncStatus: 'synced',
+              localImagePath: null 
+            );
+            await _appDatabase.articleDAO.insertArticle(syncedArticle);
+            print("SYNC PUSH: Sincronizado ${article.title}");
+
+          } catch (e) {
+            print("SYNC PUSH ERROR en ${article.title}: $e");
           }
         }
       }
-    } catch (e) {
-      print("SYNC PULL ERROR: $e");
+
+      // ---------------------------------------------------------
+      // PASO 2: PULL (BAJADA) - Traer artículos de la nube al local
+      // ---------------------------------------------------------
+      // ... (El código de PULL se mantiene exactamente igual) ...
+      print("SYNC PULL: Buscando artículos remotos para rehidratar local...");
+      try {
+        final remoteSnapshot = await _firestore
+            .collection('articles')
+            .where('userId', isEqualTo: user.uid)
+            .get();
+
+        for (final doc in remoteSnapshot.docs) {
+          final remoteData = doc.data();
+          remoteData['syncStatus'] = 'synced'; 
+          
+          final remoteModel = ArticleModel.fromJson(remoteData);
+          final localArticle = await _appDatabase.articleDAO.findArticleByUrl(remoteModel.url!);
+
+          if (localArticle == null) {
+            await _appDatabase.articleDAO.insertArticle(remoteModel);
+            print("SYNC PULL: Descargado ${remoteModel.title}");
+          } else {
+            if (localArticle.syncStatus == 'synced') {
+               final merged = remoteModel.copyWith(
+                 id: localArticle.id,
+                 isSaved: localArticle.isSaved,
+                 isLiked: localArticle.isLiked,
+                 localImagePath: localArticle.localImagePath
+               );
+               await _appDatabase.articleDAO.insertArticle(merged);
+            }
+          }
+        }
+      } catch (e) {
+        print("SYNC PULL ERROR: $e");
+      }
+
+    } finally {
+      // 3. [CRÍTICO] Liberar el semáforo SIEMPRE, haya error o no.
+      _isSyncing = false;
+      print("🏁 SYNC: Proceso finalizado. Semáforo libre.");
     }
   }
 

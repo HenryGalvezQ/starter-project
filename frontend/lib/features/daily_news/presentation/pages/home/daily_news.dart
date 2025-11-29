@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-
+import 'package:connectivity_plus/connectivity_plus.dart';
 // Remoto
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/remote/remote_article_state.dart';
@@ -41,21 +41,58 @@ class DailyNews extends HookWidget {
     // [FIX SITUACIÓN 2 y 3] useEffect para Sync al abrir la App
     // Esto se ejecuta una vez al montar el widget. Si ya hay sesión (persistencia), dispara el sync.
     useEffect(() {
-      final authState = context.read<AuthBloc>().state;
-      if (authState is Authenticated) {
-        print("🚀 APP START: Usuario detectado. Iniciando Sincronización...");
-        context.read<MyArticlesBloc>().add(const LoadMyArticles());
-        context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
+      // 1. Referencia al AuthBloc para verificar sesión
+      final authBloc = context.read<AuthBloc>();
+      
+      // Función auxiliar para sincronizar todo
+      void triggerSync() {
+        if (authBloc.state is Authenticated) {
+          print("🚀 SYNC TRIGGER: Internet detectado o Inicio de App.");
+          // Carga la data local actual
+          context.read<MyArticlesBloc>().add(const LoadMyArticles());
+          // Intenta subir lo pendiente (Create/Update/Delete) y bajar novedades
+          context.read<MyArticlesBloc>().add(const SyncMyArticles());
+          // Sincroniza favoritos y likes
+          context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
+        }
       }
-      return null;
+
+      // 2. Ejecutar Sync al abrir la app (Intento inicial)
+      triggerSync();
+
+      // 3. SUSCRIPCIÓN A CAMBIOS DE CONEXIÓN (La magia automática)
+      final subscription = Connectivity().onConnectivityChanged.listen((result) {
+        // Nota: connectivity_plus puede devolver una lista o un solo valor dependiendo la versión
+        bool hasInternet = false;
+        if (result is List) {
+          hasInternet = !result.contains(ConnectivityResult.none);
+        } else {
+          hasInternet = result != ConnectivityResult.none;
+        }
+
+        if (hasInternet) {
+          print("📶 CONEXIÓN RESTAURADA: Ejecutando Auto-Sync...");
+          triggerSync();
+        }
+      });
+
+      // Limpieza al cerrar el widget
+      return subscription.cancel;
     }, []);
 
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, authState) {
         if (authState is Authenticated) {
-          // Sync cuando iniciamos sesión manualmente
+          // [FIX CRÍTICO AQUÍ]
           print("🔄 UI: Sesión iniciada. REHIDRATANDO DATOS...");
+          
+          // 1. Cargar lo que haya localmente (probablemente vacío al inicio)
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
+          
+          // 2. [AGREGAR ESTA LÍNEA] Forzar descarga de la nube inmediatamente
+          context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
+          
+          // 3. Sincronizar Favoritos y Likes
           context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
         } 
         else if (authState is Unauthenticated) {

@@ -14,7 +14,7 @@ class MyReports extends StatelessWidget {
   Widget build(BuildContext context) {
     // TRIGGER AUTOMÁTICO (Opcional): Si deseas sincronizar al abrir la pestaña
     WidgetsBinding.instance.addPostFrameCallback((_) {
-       // context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
+      context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
     });
 
     return Scaffold(
