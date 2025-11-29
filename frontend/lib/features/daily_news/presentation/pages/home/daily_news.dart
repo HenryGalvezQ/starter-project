@@ -30,6 +30,11 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/pag
 import '../../../domain/entities/article.dart';
 import '../../widgets/article_tile.dart';
 
+// Constantes de Categoría
+const List<String> kFilterCategories = [
+  'All', 'General', 'Workout', 'Nutrition', 'Mental Health', 'Gear', 'Events'
+];
+
 class DailyNews extends HookWidget {
   const DailyNews({Key? key}) : super(key: key);
 
@@ -162,82 +167,180 @@ class _FitnessNewsView extends HookWidget {
   Widget build(BuildContext context) {
     // ESTADOS
     final isSearching = useState(false);
-    final selectedFilter = useState<SearchFilter>(SearchFilter.all);
     final searchController = useTextEditingController();
+    
+    // Estados de Filtros
+    final selectedSearchFilter = useState<SearchFilter>(SearchFilter.all);
+    final selectedCategory = useState<String>("All");
+    final selectedSort = useState<SortOrder>(SortOrder.newest);
 
-    // Trigger de búsqueda al cambiar filtro o texto
-    void triggerSearch() {
+    // Trigger Maestro
+    void triggerUpdate() {
       context.read<RemoteArticlesBloc>().add(
         SearchArticles(
           query: searchController.text,
-          filter: selectedFilter.value
+          filter: selectedSearchFilter.value,
+          category: selectedCategory.value,
+          sortOrder: selectedSort.value
         )
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        // LOGICA DE CAMBIO DE TÍTULO A INPUT
         title: isSearching.value
             ? TextField(
                 controller: searchController,
                 autofocus: true,
                 style: const TextStyle(color: Colors.black),
                 decoration: InputDecoration(
-                  hintText: 'Buscar por ${selectedFilter.value.name}...',
+                  hintText: 'Buscar por ${selectedSearchFilter.value.name}...',
                   border: InputBorder.none,
                   hintStyle: const TextStyle(color: Colors.grey),
                 ),
-                onChanged: (query) => triggerSearch(),
+                onChanged: (query) => triggerUpdate(),
               )
             : const Text('Fitness News', style: TextStyle(color: Colors.black)),
         
         actions: [
           IconButton(
-            icon: Icon(
-              isSearching.value ? Icons.close : Icons.search,
-              color: Colors.black,
-            ),
+            icon: Icon(isSearching.value ? Icons.close : Icons.search, color: Colors.black),
             onPressed: () {
               if (isSearching.value) {
-                // AL CERRAR:
+                // RESET AL CERRAR BUSQUEDA (Opcional: puedes dejar los filtros activos si prefieres)
                 isSearching.value = false;
                 searchController.clear();
-                selectedFilter.value = SearchFilter.all; // Reset filtro
-                // Volvemos al feed normal
-                context.read<RemoteArticlesBloc>().add(const GetArticles());
+                // selectedCategory.value = "All"; // Descomenta si quieres resetear categoria al cerrar buscar
+                triggerUpdate();
               } else {
-                // AL ABRIR:
                 isSearching.value = true;
               }
             },
           )
         ],
-        // BARRA DE FILTROS (Visible solo cuando se busca)
-        bottom: isSearching.value ? PreferredSize(
-          preferredSize: const Size.fromHeight(50),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                _buildFilterChip(SearchFilter.all, "Todos", selectedFilter, triggerSearch),
-                const SizedBox(width: 8),
-                _buildFilterChip(SearchFilter.title, "Título", selectedFilter, triggerSearch),
-                const SizedBox(width: 8),
-                _buildFilterChip(SearchFilter.author, "Autor", selectedFilter, triggerSearch),
-                const SizedBox(width: 8),
-                _buildFilterChip(SearchFilter.description, "Contenido", selectedFilter, triggerSearch),
-              ],
-            ),
-          ),
-        ) : null,
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          // CABECERA DE FILTROS Y ORDENAMIENTO
+          _buildFiltersHeader(
+            isSearching.value, 
+            selectedSearchFilter, 
+            selectedCategory, 
+            selectedSort, 
+            triggerUpdate
+          ),
+          
+          // LISTA DE ARTICULOS
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
-  Widget _buildFilterChip(
+  Widget _buildFiltersHeader(
+    bool isSearching,
+    ValueNotifier<SearchFilter> searchFilter,
+    ValueNotifier<String> categoryFilter,
+    ValueNotifier<SortOrder> sortFilter,
+    VoidCallback onUpdate,
+  ) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. FILTROS DE BÚSQUEDA (Solo visibles si se busca)
+          if (isSearching) ...[
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildChip(SearchFilter.all, "Todos", searchFilter, onUpdate),
+                  const SizedBox(width: 8),
+                  _buildChip(SearchFilter.title, "Título", searchFilter, onUpdate),
+                  const SizedBox(width: 8),
+                  _buildChip(SearchFilter.author, "Autor", searchFilter, onUpdate),
+                  const SizedBox(width: 8),
+                  _buildChip(SearchFilter.description, "Contenido", searchFilter, onUpdate),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          // 2. CATEGORÍAS (Wrap para permitir salto de línea)
+          Wrap(
+            spacing: 8.0,
+            runSpacing: 4.0,
+            children: kFilterCategories.map((category) {
+              final isSelected = categoryFilter.value == category;
+              return ChoiceChip(
+                label: Text(category),
+                selected: isSelected,
+                onSelected: (selected) {
+                  if (selected) {
+                    categoryFilter.value = category;
+                    onUpdate();
+                  }
+                },
+                selectedColor: Colors.black,
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : Colors.black,
+                  fontSize: 12
+                ),
+                backgroundColor: Colors.grey[200],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                // Visualmente compactos
+                visualDensity: VisualDensity.compact, 
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 8),
+
+          // 3. ORDENAMIENTO (Dropdown)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text("Ordenar por: ", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<SortOrder>(
+                    value: sortFilter.value,
+                    isDense: true,
+                    icon: const Icon(Icons.sort, size: 18),
+                    style: const TextStyle(color: Colors.black, fontSize: 13),
+                    items: const [
+                      DropdownMenuItem(value: SortOrder.newest, child: Text("Más Recientes")),
+                      DropdownMenuItem(value: SortOrder.oldest, child: Text("Más Antiguos")),
+                      DropdownMenuItem(value: SortOrder.popular, child: Text("Más Populares 🔥")),
+                    ],
+                    onChanged: (newValue) {
+                      if (newValue != null) {
+                        sortFilter.value = newValue;
+                        onUpdate();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Divider(),
+        ],
+      ),
+    );
+  }
+
+  // Helper genérico para los chips de búsqueda
+  Widget _buildChip(
     SearchFilter filter, 
     String label, 
     ValueNotifier<SearchFilter> currentFilter,
@@ -253,16 +356,14 @@ class _FitnessNewsView extends HookWidget {
           onUpdate();
         }
       },
-      selectedColor: Colors.black,
-      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+      selectedColor: Colors.blueGrey,
+      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 12),
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Colors.grey),
-      ),
+      shape: const StadiumBorder(side: BorderSide(color: Colors.grey)),
+      visualDensity: VisualDensity.compact,
     );
   }
-
+  
   Widget _buildBody() {
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, remoteState) {

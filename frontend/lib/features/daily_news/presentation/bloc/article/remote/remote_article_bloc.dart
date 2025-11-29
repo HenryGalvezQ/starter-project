@@ -51,39 +51,57 @@ class RemoteArticlesBloc extends Bloc<RemoteArticlesEvent, RemoteArticlesState> 
     }
   }
 
+// Lógica Maestra de Filtrado y Ordenamiento
   void onSearchArticles(SearchArticles event, Emitter<RemoteArticlesState> emit) async {
-    // Búsqueda en Memoria (Funciona para Guest y Auth)
-    // No emitimos Loading para que sea instantáneo (Search-as-you-type)
-    
-    if (event.query.isEmpty) {
-      // Si borran, restauramos la lista completa
-      emit(RemoteArticlesDone(_allArticles));
-      return;
+    // 1. Empezamos con la lista completa maestra
+    List<ArticleEntity> result = List.from(_allArticles);
+
+    // 2. FILTRO DE TEXTO (Si hay query)
+    if (event.query.isNotEmpty) {
+      final query = event.query.toLowerCase();
+      result = result.where((article) {
+        final title = article.title?.toLowerCase() ?? '';
+        final author = article.author?.toLowerCase() ?? '';
+        final content = "${article.content ?? ''} ${article.description ?? ''}".toLowerCase();
+
+        switch (event.filter) {
+          case SearchFilter.title: return title.contains(query);
+          case SearchFilter.author: return author.contains(query);
+          case SearchFilter.description: return content.contains(query);
+          case SearchFilter.all:
+          default: return title.contains(query) || author.contains(query) || content.contains(query);
+        }
+      }).toList();
     }
 
-    final query = event.query.toLowerCase();
-    
-    final filtered = _allArticles.where((article) {
-      final title = article.title?.toLowerCase() ?? '';
-      final author = article.author?.toLowerCase() ?? '';
-      // Usamos content o description
-      final content = (article.content ?? article.description ?? '').toLowerCase();
+    // 3. FILTRO DE CATEGORÍA (Nuevo)
+    if (event.category != "All") {
+      result = result.where((article) {
+        // Comparamos ignorando mayúsculas/minúsculas por seguridad
+        return article.category?.toLowerCase() == event.category.toLowerCase();
+      }).toList();
+    }
 
-      switch (event.filter) {
-        case SearchFilter.title:
-          return title.contains(query);
-        case SearchFilter.author:
-          return author.contains(query);
-        case SearchFilter.description:
-          return content.contains(query);
-        case SearchFilter.all:
-        default:
-          return title.contains(query) || 
-                 author.contains(query) || 
-                 content.contains(query);
-      }
-    }).toList();
+    // 4. ORDENAMIENTO (Nuevo)
+    switch (event.sortOrder) {
+      case SortOrder.newest:
+        result.sort((a, b) {
+          return (b.publishedAt ?? '').compareTo(a.publishedAt ?? '');
+        });
+        break;
+      case SortOrder.oldest:
+        result.sort((a, b) {
+          return (a.publishedAt ?? '').compareTo(b.publishedAt ?? '');
+        });
+        break;
+      case SortOrder.popular:
+        result.sort((a, b) {
+          return (b.likesCount ?? 0).compareTo(a.likesCount ?? 0);
+        });
+        break;
+    }
 
-    emit(RemoteArticlesDone(filtered));
+    // 5. Emitir resultado
+    emit(RemoteArticlesDone(result));
   }
 }
