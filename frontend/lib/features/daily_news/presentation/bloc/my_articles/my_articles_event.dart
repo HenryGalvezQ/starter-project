@@ -13,6 +13,18 @@ class SaveNewArticle extends MyArticlesEvent {
   const SaveNewArticle(this.article);
 }
 
+// NUEVO: Evento para actualizar
+class UpdateExistingArticle extends MyArticlesEvent {
+  final ArticleEntity article;
+  const UpdateExistingArticle(this.article);
+}
+
+// NUEVO: Evento para borrar
+class DeleteExistingArticle extends MyArticlesEvent {
+  final ArticleEntity article;
+  const DeleteExistingArticle(this.article);
+}
+
 class SyncMyArticles extends MyArticlesEvent {
   const SyncMyArticles();
 }

@@ -23,6 +23,10 @@ abstract class ArticleRepository {
   // NUEVO: Crear un artículo localmente (My Report)
   Future<void> createLocalArticle(ArticleEntity article);
 
+  // NUEVOS MÉTODOS FASE 9
+  Future<void> deleteLocalArticle(ArticleEntity article); // Soft delete
+  Future<void> updateLocalArticle(ArticleEntity article); // Update offline
+
   Future<void> clearLocalData();
 
   Future<void> syncSavedArticles(); // Traer favoritos de la nube

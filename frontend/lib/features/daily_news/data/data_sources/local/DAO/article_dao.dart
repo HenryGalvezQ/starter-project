@@ -24,16 +24,15 @@ abstract class ArticleDao {
 
   // --- LECTURA FILTRADA POR USUARIO (Data Isolation) ---
 
-  // 1. Mis Artículos (Pending + Synced) del usuario actual
-  // Ordenados por fecha para el feed "My Reports"
-  @Query("SELECT * FROM article WHERE userId = :userId ORDER BY publishedAt DESC")
+  // MODIFICADO: Excluimos los que están marcados para borrar ('pending_delete')
+  // para que la UI no los muestre aunque sigan en la DB esperando sync.
+  @Query("SELECT * FROM article WHERE userId = :userId AND syncStatus != 'pending_delete' ORDER BY publishedAt DESC")
   Future<List<ArticleModel>> getArticlesByUser(String userId);
 
-  // 2. Cola de Salida: Solo los pendientes de ESTE usuario
-  @Query("SELECT * FROM article WHERE syncStatus = 'pending' AND userId = :userId")
+  // MODIFICADO: Ahora traemos 'pending' (para subir/editar) Y 'pending_delete' (para borrar)
+  @Query("SELECT * FROM article WHERE (syncStatus = 'pending' OR syncStatus = 'pending_delete') AND userId = :userId")
   Future<List<ArticleModel>> getPendingArticlesByUser(String userId);
 
-  // 3. Favoritos: Solo los guardados por ESTE usuario
   @Query("SELECT * FROM article WHERE isSaved = 1 AND userId = :userId")
   Future<List<ArticleModel>> getSavedArticlesByUser(String userId);
 

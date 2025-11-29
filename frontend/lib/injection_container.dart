@@ -25,6 +25,8 @@ import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/get_liked_articles.dart'; // Importar
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/toggle_like_article.dart'; // Importar
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_liked_articles.dart'; // IMPORTAR
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/delete_article.dart';
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/update_article.dart';
 // Features - Auth
 import 'package:news_app_clean_architecture/features/auth/data/repository/auth_repository_impl.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/repository/auth_repository.dart';
@@ -105,6 +107,10 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<CreateArticleUseCase>(
     CreateArticleUseCase(sl())
   );
+    // [NUEVO] Fase 9: Delete & Update
+  sl.registerSingleton<DeleteArticleUseCase>(DeleteArticleUseCase(sl()));
+  sl.registerSingleton<UpdateArticleUseCase>(UpdateArticleUseCase(sl()));
+
   sl.registerSingleton<ClearLocalDataUseCase>(
   ClearLocalDataUseCase(sl())
   );
@@ -141,7 +147,13 @@ Future<void> initializeDependencies() async {
   );
 
   sl.registerFactory<MyArticlesBloc>(
-  () => MyArticlesBloc(sl(), sl(), sl())
+    () => MyArticlesBloc(
+      sl(), // Get
+      sl(), // Create
+      sl(), // Sync
+      sl(), // Delete (Nuevo)
+      sl()  // Update (Nuevo)
+    )
   );
 
 }

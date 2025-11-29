@@ -12,11 +12,9 @@ class MyReports extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // TRIGGER AUTOMÁTICO DE SYNC AL ENTRAR (Opcional, buena práctica UX)
-    // Usamos addPostFrameCallback para no bloquear el build
+    // TRIGGER AUTOMÁTICO (Opcional): Si deseas sincronizar al abrir la pestaña
     WidgetsBinding.instance.addPostFrameCallback((_) {
        // context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
-       // Descomentar arriba si quieres auto-sync agresivo al abrir la tab
     });
 
     return Scaffold(
@@ -54,29 +52,27 @@ class MyReports extends StatelessWidget {
               itemBuilder: (context, index) {
                 final article = state.articles![index];
                 
-                // STACK: Artículo + Indicador de Estado
+                // STACK: Usamos un Stack para superponer los iconos sobre la tarjeta
                 return Stack(
                   children: [
+                    // CAPA 1: La Tarjeta Normal
                     ArticleWidget(
                       article: article,
-                      // En "Mis Reportes", generalmente no nos damos like/save a nosotros mismos
-                      // (o se maneja distinto), así que deshabilitamos esas opciones visualmente
-                      // o las dejamos por defecto.
+                      // Desactivamos el botón de borrar estandar del widget,
+                      // usaremos nuestros propios botones personalizados arriba.
                       isRemovable: false, 
-                      
-                      // Opcional: Si quieres permitir editar al tocar, define esto:
-                      // onArticlePressed: (article) => _navigateToEdit(context, article),
                     ),
                     
-                    // INDICADOR DE ESTADO (Esquina superior derecha)
+                    // CAPA 2: Indicador de Sincronización (Esquina Superior Izquierda)
                     Positioned(
                       top: 10,
-                      right: 10,
+                      left: 10,
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: article.syncStatus == 'pending' ? Colors.orange : Colors.green,
                           shape: BoxShape.circle,
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                         ),
                         child: Icon(
                           article.syncStatus == 'pending' ? Icons.access_time : Icons.check,
@@ -84,7 +80,42 @@ class MyReports extends StatelessWidget {
                           size: 16,
                         ),
                       ),
-                    )
+                    ),
+
+                    // CAPA 3: Botones de Acción CRUD (Esquina Superior Derecha)
+                    Positioned(
+                      top: 5,
+                      right: 5,
+                      child: Row(
+                        children: [
+                          // BOTÓN EDITAR (Lápiz)
+                          _buildCircleButton(
+                            icon: Icons.edit,
+                            color: Colors.blueAccent,
+                            onTap: () {
+                              // Navegamos a CreateArticleScreen pasando el artículo para activar modo EDICIÓN
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CreateArticleScreen(articleToEdit: article)
+                                ),
+                              );
+                            }
+                          ),
+                          
+                          const SizedBox(width: 8),
+
+                          // BOTÓN ELIMINAR (Basura)
+                          _buildCircleButton(
+                            icon: Icons.delete_outline,
+                            color: Colors.redAccent,
+                            onTap: () {
+                              _showDeleteConfirmation(context, article);
+                            }
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 );
               },
@@ -97,6 +128,7 @@ class MyReports extends StatelessWidget {
       // BOTÓN FLOTANTE PARA CREAR
       floatingActionButton: FloatingActionButton(
         onPressed: () {
+          // Navegamos sin argumentos -> Modo CREACIÓN
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const CreateArticleScreen()),
@@ -105,6 +137,53 @@ class MyReports extends StatelessWidget {
         backgroundColor: Colors.black87,
         child: const Icon(Icons.add, color: Colors.white),
       ),
+    );
+  }
+
+  // Helper para construir los botones circulares blancos
+  Widget _buildCircleButton({required IconData icon, required Color color, required VoidCallback onTap}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95), // Casi sólido para que se vea bien sobre la imagen
+        shape: BoxShape.circle,
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)]
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 20, color: color),
+        constraints: const BoxConstraints(), // Hace que el botón sea compacto
+        padding: const EdgeInsets.all(8),
+        onPressed: onTap,
+      ),
+    );
+  }
+
+  // Diálogo de confirmación para eliminar
+  void _showDeleteConfirmation(BuildContext context, dynamic article) {
+    showDialog(
+      context: context, 
+      builder: (ctx) => AlertDialog(
+        title: const Text("Eliminar reporte"),
+        content: const Text("¿Estás seguro? Se borrará de tu dispositivo y de la nube."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), 
+            child: const Text("Cancelar")
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // Llamada al evento de borrado Offline-First (Soft Delete)
+              // Esto marcará 'pending_delete' y desaparecerá de la lista instantáneamente
+              context.read<MyArticlesBloc>().add(DeleteExistingArticle(article));
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Reporte eliminado 🗑️"))
+              );
+            }, 
+            child: const Text("Eliminar", style: TextStyle(color: Colors.red))
+          ),
+        ],
+      )
     );
   }
 }

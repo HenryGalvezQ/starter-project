@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -11,51 +12,45 @@ import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
-// Categorías fijas del sistema
 const List<String> kArticleCategories = [
-  'General',
-  'Workout',
-  'Nutrition',
-  'Mental Health',
-  'Gear',
-  'Events'
+  'General', 'Workout', 'Nutrition', 'Mental Health', 'Gear', 'Events'
 ];
 
 class CreateArticleScreen extends HookWidget {
-  const CreateArticleScreen({Key? key}) : super(key: key);
+  final ArticleEntity? articleToEdit; // Si es null, es CREAR. Si tiene data, es EDITAR.
+
+  const CreateArticleScreen({Key? key, this.articleToEdit}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final titleController = useTextEditingController();
-    final contentController = useTextEditingController();
+    final isEditing = articleToEdit != null;
+
+    // HOOKS: Pre-llenamos si estamos editando
+    final titleController = useTextEditingController(text: articleToEdit?.title);
+    final contentController = useTextEditingController(text: articleToEdit?.content);
+    final selectedCategory = useState<String>(articleToEdit?.category ?? kArticleCategories[0]);
     
-    // NUEVO: Estado para la categoría (Valor inicial 'General')
-    final selectedCategory = useState<String>(kArticleCategories[0]);
+    // IMAGEN: Prioridad -> 1. Nueva (picker) 2. Local existente (pending) 3. Remota existente
+    final localImagePath = useState<String?>(articleToEdit?.localImagePath);
     
-    final localImagePath = useState<String?>(null);
     final picker = useMemoized(() => ImagePicker());
 
     Future<void> _pickImage(ImageSource source) async {
       final XFile? image = await picker.pickImage(source: source);
       if (image != null) {
-        // 1. Obtener directorio seguro de la app (No se borra al cerrar)
         final directory = await getApplicationDocumentsDirectory();
-        
-        // 2. Crear nombre de archivo único
         final fileName = path.basename(image.path);
+        // Creamos una copia permanente para que no se borre de caché
         final permanentPath = '${directory.path}/$fileName';
+        await File(image.path).copy(permanentPath);
         
-        // 3. Mover archivo de caché a documentos
-        final File permanentImage = await File(image.path).copy(permanentPath);
-
-        // 4. Guardar la ruta PERMANENTE
-        localImagePath.value = permanentImage.path;
+        localImagePath.value = permanentPath;
       }
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Nuevo Reporte", style: TextStyle(color: Colors.black)),
+        title: Text(isEditing ? "Editar Reporte" : "Nuevo Reporte", style: const TextStyle(color: Colors.black)),
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.black),
           onPressed: () => Navigator.pop(context),
@@ -64,6 +59,7 @@ class CreateArticleScreen extends HookWidget {
           IconButton(
             icon: const Icon(Icons.check, color: Colors.blueAccent),
             onPressed: () {
+              // 1. Validaciones básicas
               if (titleController.text.isEmpty || contentController.text.isEmpty) {
                  ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Título y contenido requeridos")),
@@ -71,30 +67,45 @@ class CreateArticleScreen extends HookWidget {
                 return;
               }
 
-              // LÓGICA DE AUTO-GENERACIÓN
-              // 1. Generamos descripción automática del contenido (resumen)
+              // 2. Generar descripción automática
               String autoDescription = contentController.text;
               if (autoDescription.length > 100) {
                 autoDescription = "${autoDescription.substring(0, 100)}...";
               }
 
-              final String uniqueId = const Uuid().v4();
+              // 3. Definir IDs y Fechas
+              // Si editamos, MANTENEMOS el ID original (url) y la fecha de publicación original
+              final uniqueId = isEditing ? articleToEdit!.url : const Uuid().v4();
+              final publishedDate = isEditing ? articleToEdit!.publishedAt : DateTime.now().toIso8601String();
 
-              final newArticle = ArticleEntity(
+              // 4. Construir Entidad
+              final article = ArticleEntity(
                 url: uniqueId,
                 title: titleController.text,
                 content: contentController.text,
-                description: autoDescription, // <--- Aquí va el automático
+                description: autoDescription,
                 category: selectedCategory.value,
-                publishedAt: DateTime.now().toIso8601String(),
-                urlToImage: "", 
-                localImagePath: localImagePath.value,
-                syncStatus: 'pending',
+                publishedAt: publishedDate,
                 
-                author: "", // Se llenará en el Repositorio con el Auth User
-
+                // Si cambiamos la foto local, borramos la referencia remota para forzar resubida
+                urlToImage: localImagePath.value != null ? "" : (articleToEdit?.urlToImage ?? ""), 
+                localImagePath: localImagePath.value,
+                
+                // CRÍTICO: Siempre 'pending' al guardar para que el SyncWorker lo procese
+                syncStatus: 'pending', 
+                
+                // Datos de usuario (se rellenan seguros en el repo, pero pasamos lo que tenemos)
+                author: articleToEdit?.author ?? "", 
+                userId: articleToEdit?.userId,
+                likesCount: articleToEdit?.likesCount ?? 0,
               );
-              context.read<MyArticlesBloc>().add(SaveNewArticle(newArticle));
+
+              // 5. Disparar Evento Correcto
+              if (isEditing) {
+                context.read<MyArticlesBloc>().add(UpdateExistingArticle(article));
+              } else {
+                context.read<MyArticlesBloc>().add(SaveNewArticle(article));
+              }
             },
           )
         ],
@@ -113,23 +124,15 @@ class CreateArticleScreen extends HookWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. IMAGEN
+              // AREA DE IMAGEN
               GestureDetector(
                 onTap: () {
                   showModalBottomSheet(context: context, builder: (ctx) {
                     return SafeArea(
                       child: Wrap(
                         children: [
-                          ListTile(
-                            leading: const Icon(Icons.photo_camera),
-                            title: const Text("Cámara"),
-                            onTap: () { _pickImage(ImageSource.camera); Navigator.pop(ctx); },
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.photo_library),
-                            title: const Text("Galería"),
-                            onTap: () { _pickImage(ImageSource.gallery); Navigator.pop(ctx); },
-                          ),
+                          ListTile(leading: const Icon(Icons.photo_camera), title: const Text("Cámara"), onTap: () { _pickImage(ImageSource.camera); Navigator.pop(ctx); }),
+                          ListTile(leading: const Icon(Icons.photo_library), title: const Text("Galería"), onTap: () { _pickImage(ImageSource.gallery); Navigator.pop(ctx); }),
                         ],
                       ),
                     );
@@ -141,28 +144,14 @@ class CreateArticleScreen extends HookWidget {
                   decoration: BoxDecoration(
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(12),
-                    image: localImagePath.value != null 
-                      ? DecorationImage(
-                          image: FileImage(File(localImagePath.value!)),
-                          fit: BoxFit.cover,
-                        )
-                      : null
                   ),
-                  child: localImagePath.value == null 
-                      ? const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
-                            Text("Portada", style: TextStyle(color: Colors.grey))
-                          ],
-                        )
-                      : null,
+                  child: _buildImageContent(localImagePath.value, articleToEdit?.urlToImage),
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              // 2. CATEGORÍA (Dropdown)
+              // DROPDOWN CATEGORIA
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
@@ -173,12 +162,8 @@ class CreateArticleScreen extends HookWidget {
                   child: DropdownButton<String>(
                     value: selectedCategory.value,
                     isExpanded: true,
-                    icon: const Icon(Icons.arrow_drop_down),
                     items: kArticleCategories.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
                     }).toList(),
                     onChanged: (newValue) {
                       if (newValue != null) selectedCategory.value = newValue;
@@ -186,36 +171,55 @@ class CreateArticleScreen extends HookWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
 
-              // 3. TÍTULO
+              // INPUT TITULO
               TextField(
                 controller: titleController,
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                decoration: const InputDecoration(
-                  hintText: "Título del titular",
-                  border: InputBorder.none,
-                ),
+                decoration: const InputDecoration(hintText: "Título del titular", border: InputBorder.none),
                 maxLines: 2,
               ),
-              
               const Divider(),
 
-              // 4. CONTENIDO (Expandido)
+              // INPUT CONTENIDO
               TextField(
                 controller: contentController,
                 style: const TextStyle(fontSize: 16),
-                decoration: const InputDecoration(
-                  hintText: "Escribe tu reporte aquí...",
-                  border: InputBorder.none,
-                ),
+                decoration: const InputDecoration(hintText: "Escribe tu reporte aquí...", border: InputBorder.none),
                 maxLines: null,
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImageContent(String? localPath, String? remoteUrl) {
+    // 1. Si hay una nueva imagen seleccionada (o pendiente local), mostramos esa
+    if (localPath != null && localPath.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(File(localPath), fit: BoxFit.cover),
+      );
+    } 
+    // 2. Si no, si hay una URL remota (edición de artículo sincronizado), mostramos esa
+    else if (remoteUrl != null && remoteUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: CachedNetworkImage(
+           imageUrl: remoteUrl, 
+           fit: BoxFit.cover,
+           placeholder: (c, u) => const Center(child: Icon(Icons.image, color: Colors.grey)),
+           errorWidget: (c, u, e) => const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      );
+    }
+    // 3. Placeholder por defecto
+    return const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Portada", style: TextStyle(color: Colors.grey))],
     );
   }
 }

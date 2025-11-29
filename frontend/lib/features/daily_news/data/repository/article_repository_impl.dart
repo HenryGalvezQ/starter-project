@@ -155,29 +155,19 @@ class ArticleRepositoryImpl implements ArticleRepository {
     if (user == null) return [];
 
     try {
-      // 1. Locales pendientes (FILTRADO POR USUARIO)
-      final localPending = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
-
-      // 2. Remotos (Nube) - Ya filtra por userId en la query
-      final remoteSnapshot = await _firestore
-          .collection('articles')
-          .where('userId', isEqualTo: user.uid)
-          .orderBy('publishedAt', descending: true)
-          .get();
-
-      final remoteArticles = remoteSnapshot.docs.map((doc) {
-        final data = doc.data();
-        data['syncStatus'] = 'synced';
-        return ArticleModel.fromJson(data);
-      }).toList();
-
-      // 3. Fusionar
-      return [...localPending, ...remoteArticles];
+      // ESTRICTO OFFLINE-FIRST:
+      // Leemos SOLO de local. ¿Por qué?
+      // 1. Velocidad instantánea.
+      // 2. Consistencia: Si borramos un item offline ('pending_delete'), Floor lo oculta.
+      //    Si leyéramos de la nube (remote), el item "reviviría" porque aún no se ha borrado en Firestore.
+      // 3. El SyncWorker se encarga en segundo plano de traer novedades y actualizar Floor.
+      
+      final localArticles = await _appDatabase.articleDAO.getArticlesByUser(user.uid);
+      return localArticles;
 
     } catch (e) {
-      print("ERROR GETTING MY ARTICLES: $e");
-      // Fallback: Si no hay red, traemos TODO lo local de este usuario
-      return await _appDatabase.articleDAO.getArticlesByUser(user.uid);
+      print("ERROR GETTING ARTICLES: $e");
+      return [];
     }
   }
 
@@ -209,66 +199,153 @@ class ArticleRepositoryImpl implements ArticleRepository {
     return _appDatabase.articleDAO.insertArticle(model);
   }
 
+  // --- NUEVO: UPDATE (Offline First) ---
+  @override
+  Future<void> updateLocalArticle(ArticleEntity article) {
+    final user = _auth.currentUser;
+    
+    // Al editar, lo ponemos en 'pending' para que el SyncWorker lo suba (Upsert)
+    // Mantenemos el mismo URL (ID) para sobrescribir.
+    final model = ArticleModel.fromEntity(article).copyWith(
+      userId: user?.uid,
+      syncStatus: 'pending', 
+    );
+    
+    return _appDatabase.articleDAO.insertArticle(model); // Insert con Replace
+  }
+
+  // --- NUEVO: DELETE (Offline First - Soft Delete) ---
+  @override
+  Future<void> deleteLocalArticle(ArticleEntity article) async {
+    // No borramos físicamente. Marcamos como 'pending_delete'.
+    // El DAO de lectura filtrará esto para que desaparezca de la UI inmediatamente.
+    await _appDatabase.articleDAO.updateSyncStatus(article.url!, 'pending_delete');
+  }
+
+ // --- SYNC ENGINE ACTUALIZADO (BIDIRECCIONAL) ---
   @override
   Future<void> syncPendingArticles() async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // DATA ISOLATION: Solo subimos lo que pertenece al usuario actual
+    // ---------------------------------------------------------
+    // PASO 1: PUSH (SUBIDA) - Enviar cambios locales a la nube
+    // ---------------------------------------------------------
     final pendingArticles = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
 
-    if (pendingArticles.isEmpty) {
-      print("SYNC: Nada pendiente para el usuario ${user.email}.");
-      return;
+    if (pendingArticles.isNotEmpty) {
+      print("SYNC PUSH: Procesando ${pendingArticles.length} cambios locales...");
+      
+      for (final article in pendingArticles) {
+        try {
+          // --- LÓGICA DE BORRADO ---
+          if (article.syncStatus == 'pending_delete') {
+            print("SYNC: Borrando ${article.title} de la nube...");
+            if (article.urlToImage != null && article.urlToImage!.contains('firebase')) {
+              try {
+                await _storage.refFromURL(article.urlToImage!).delete();
+              } catch (e) { print("Error borrando imagen (no crítica): $e"); }
+            }
+            final q = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
+            for (var doc in q.docs) {
+              await doc.reference.delete();
+            }
+            await _appDatabase.articleDAO.deleteArticle(article);
+            continue;
+          }
+
+          // --- LÓGICA DE CREACIÓN / EDICIÓN ---
+          String imageUrl = article.urlToImage ?? "";
+          if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
+            final file = File(article.localImagePath!);
+            if (await file.exists()) {
+              final storageRef = _storage
+                  .ref()
+                  .child('media/articles/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
+              await storageRef.putFile(
+                file,
+                SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
+              );
+              imageUrl = await storageRef.getDownloadURL();
+            }
+          }
+
+          final q = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
+          DocumentReference docRef;
+          if (q.docs.isNotEmpty) {
+             docRef = q.docs.first.reference;
+          } else {
+             docRef = _firestore.collection('articles').doc();
+          }
+
+          await docRef.set({
+            'userId': user.uid,
+            'author': article.author,
+            'title': article.title,
+            'description': article.description,
+            'category': article.category ?? 'General',
+            'content': article.content,
+            'publishedAt': article.publishedAt,
+            'urlToImage': imageUrl,
+            'likesCount': article.likesCount ?? 0,
+            'syncStatus': 'synced',
+            'url': article.url
+          }, SetOptions(merge: true));
+
+          final syncedArticle = article.copyWith(
+            urlToImage: imageUrl,
+            syncStatus: 'synced',
+            localImagePath: null 
+          );
+          await _appDatabase.articleDAO.insertArticle(syncedArticle);
+          print("SYNC PUSH: Sincronizado ${article.title}");
+
+        } catch (e) {
+          print("SYNC PUSH ERROR en ${article.title}: $e");
+        }
+      }
     }
 
-    final userName = user.displayName ?? user.email ?? "Usuario";
-    print("SYNC: Sincronizando ${pendingArticles.length} artículos de $userName...");
+    // ---------------------------------------------------------
+    // PASO 2: PULL (BAJADA) - Traer artículos de la nube al local
+    // ---------------------------------------------------------
+    print("SYNC PULL: Buscando artículos remotos para rehidratar local...");
+    try {
+      final remoteSnapshot = await _firestore
+          .collection('articles')
+          .where('userId', isEqualTo: user.uid)
+          .get();
 
-    for (final article in pendingArticles) {
-      try {
-        String imageUrl = article.urlToImage ?? "";
+      for (final doc in remoteSnapshot.docs) {
+        final remoteData = doc.data();
+        remoteData['syncStatus'] = 'synced'; // Vienen de la nube, así que están synced
+        
+        final remoteModel = ArticleModel.fromJson(remoteData);
 
-        // PASO A: Subir Imagen
-        if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
-          final file = File(article.localImagePath!);
-          if (await file.exists()) {
-            final storageRef = _storage
-                .ref()
-                .child('media/articles/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
-            
-            await storageRef.putFile(
-              file,
-              SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
-            );
-            imageUrl = await storageRef.getDownloadURL();
+        // Verificamos si ya lo tenemos en local
+        final localArticle = await _appDatabase.articleDAO.findArticleByUrl(remoteModel.url!);
+
+        if (localArticle == null) {
+          // A. No existe en local -> LO INSERTAMOS (Rehidratación)
+          await _appDatabase.articleDAO.insertArticle(remoteModel);
+          print("SYNC PULL: Descargado ${remoteModel.title}");
+        } else {
+          // B. Ya existe. Solo sobrescribimos si el local NO tiene cambios pendientes.
+          // Si tuviéramos un cambio 'pending', NO lo tocamos para que gane tu edición local.
+          if (localArticle.syncStatus == 'synced') {
+             // Preservamos flags locales importantes que Firestore no tiene
+             final merged = remoteModel.copyWith(
+               id: localArticle.id, // Mantener ID autoincremental de Floor
+               isSaved: localArticle.isSaved, // Mantener si lo tengo en favoritos local
+               isLiked: localArticle.isLiked, // Mantener mi like local
+               localImagePath: localArticle.localImagePath // Mantener rutas de imagen si las hay
+             );
+             await _appDatabase.articleDAO.insertArticle(merged);
           }
         }
-
-        // PASO B: Subir Data
-        final docRef = _firestore.collection('articles').doc(); 
-        
-        await docRef.set({
-          'userId': user.uid, // Firma en la nube
-          'author': article.author, // Usamos el nombre local que ya inyectamos al crear
-          'title': article.title,
-          'description': article.description,
-          'category': article.category ?? 'General',
-          'content': article.content,
-          'publishedAt': article.publishedAt,
-          'urlToImage': imageUrl,
-          'likesCount': 0,
-          'syncStatus': 'synced',
-          'url': 'symmetry://article/${docRef.id}' 
-        });
-
-        // PASO C: Actualizar Local
-        await _appDatabase.articleDAO.updateSyncStatus(article.url!, 'synced');
-        print("SYNC: Completado para ${article.title}");
-
-      } catch (e) {
-        print("SYNC ERROR: $e");
       }
+    } catch (e) {
+      print("SYNC PULL ERROR: $e");
     }
   }
 
@@ -502,5 +579,34 @@ class ArticleRepositoryImpl implements ArticleRepository {
     } catch (e) {
       print("TRANSACTION ERROR: $e");
     }
+  }
+}
+
+// Extensión para copyWith (Ayuda a copiar objetos inmutables)
+extension ArticleModelCopyWith on ArticleModel {
+  ArticleModel copyWith({
+    int? id, // <--- AÑADIDO: El parámetro que faltaba
+    String? userId, String? author, String? title, String? description,
+    String? url, String? urlToImage, String? publishedAt, String? content,
+    int? likesCount, String? syncStatus, String? localImagePath,
+    bool? isSaved, bool? isLiked, String? category
+  }) {
+    return ArticleModel(
+      id: id ?? this.id, // <--- CORREGIDO: Usa el argumento o el actual
+      userId: userId ?? this.userId,
+      author: author ?? this.author,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      url: url ?? this.url,
+      urlToImage: urlToImage ?? this.urlToImage,
+      publishedAt: publishedAt ?? this.publishedAt,
+      content: content ?? this.content,
+      likesCount: likesCount ?? this.likesCount,
+      syncStatus: syncStatus ?? this.syncStatus,
+      localImagePath: localImagePath ?? this.localImagePath,
+      isSaved: isSaved ?? this.isSaved,
+      isLiked: isLiked ?? this.isLiked,
+      category: category ?? this.category,
+    );
   }
 }

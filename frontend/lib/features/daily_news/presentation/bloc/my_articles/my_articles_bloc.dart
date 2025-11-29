@@ -2,6 +2,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/create_article.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/get_my_articles.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_pending_articles.dart';
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/delete_article.dart';
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/update_article.dart';
 import 'my_articles_event.dart';
 import 'my_articles_state.dart';
 
@@ -9,15 +11,22 @@ class MyArticlesBloc extends Bloc<MyArticlesEvent, MyArticlesState> {
   final GetMyArticlesUseCase _getMyArticlesUseCase;
   final CreateArticleUseCase _createArticleUseCase;
   final SyncPendingArticlesUseCase _syncPendingArticlesUseCase;
+  // Nuevas dependencias
+  final DeleteArticleUseCase _deleteArticleUseCase;
+  final UpdateArticleUseCase _updateArticleUseCase;
 
   MyArticlesBloc(
     this._getMyArticlesUseCase,
     this._createArticleUseCase,
     this._syncPendingArticlesUseCase,
+    this._deleteArticleUseCase,
+    this._updateArticleUseCase,
   ) : super(const MyArticlesLoading()) {
     on<LoadMyArticles>(_onLoadMyArticles);
     on<SaveNewArticle>(_onSaveNewArticle);
     on<SyncMyArticles>(_onSyncMyArticles);
+    on<DeleteExistingArticle>(_onDeleteExistingArticle);
+    on<UpdateExistingArticle>(_onUpdateExistingArticle);
   }
 
   void _onLoadMyArticles(LoadMyArticles event, Emitter<MyArticlesState> emit) async {
@@ -49,7 +58,30 @@ class MyArticlesBloc extends Bloc<MyArticlesEvent, MyArticlesState> {
       emit(MyArticlesError("Error guardando reporte: $e"));
     }
   }
+  // LOGICA EDITAR
+  void _onUpdateExistingArticle(UpdateExistingArticle event, Emitter<MyArticlesState> emit) async {
+    try {
+      await _updateArticleUseCase(params: event.article);
+      emit(const ArticleSavedSuccess()); // Reusamos el estado de éxito
+      add(const LoadMyArticles());
+      add(const SyncMyArticles()); // Intentar subir cambios
+    } catch (e) {
+      emit(MyArticlesError("Error actualizando: $e"));
+    }
+  }
 
+  // LOGICA BORRAR
+  void _onDeleteExistingArticle(DeleteExistingArticle event, Emitter<MyArticlesState> emit) async {
+    try {
+      await _deleteArticleUseCase(params: event.article);
+      // Recargamos INMEDIATAMENTE. Como marcamos 'pending_delete' en DB, 
+      // el DAO ya no lo devolverá en LoadMyArticles, logrando el efecto visual instantáneo.
+      add(const LoadMyArticles()); 
+      add(const SyncMyArticles()); // Ejecutar borrado en nube si hay red
+    } catch (e) {
+      emit(MyArticlesError("Error eliminando: $e"));
+    }
+  }
   void _onSyncMyArticles(SyncMyArticles event, Emitter<MyArticlesState> emit) async {
     emit(const MyArticlesLoading());
     
