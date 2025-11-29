@@ -1,33 +1,29 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_hooks/flutter_hooks.dart'; // NECESARIO PARA useEffect
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/create_article/create_article.dart';
 import '../../widgets/article_tile.dart';
 
-class MyReports extends HookWidget {
+class MyReports extends StatelessWidget {
   const MyReports({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    
-    // EFECTO: Al entrar a la pantalla, intentamos sincronizar automáticamente si hay pendientes
-    // Esto es crucial si el usuario guardó algo offline y cerró la app antes de tener internet.
-    useEffect(() {
-      // Disparamos sync sin bloquear la UI (en segundo plano)
-      // Si hay internet, pasará de naranja a verde solo.
-      context.read<MyArticlesBloc>().add(const SyncMyArticles());
-      return null;
-    }, []); // [] asegura que solo corra una vez al montar
+    // TRIGGER AUTOMÁTICO DE SYNC AL ENTRAR (Opcional, buena práctica UX)
+    // Usamos addPostFrameCallback para no bloquear el build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+       // context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
+       // Descomentar arriba si quieres auto-sync agresivo al abrir la tab
+    });
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Reports', style: TextStyle(color: Colors.black)),
         actions: [
-          // BOTÓN DE SINCRONIZACIÓN MANUAL (Backup)
+          // BOTÓN DE SINCRONIZACIÓN MANUAL
           IconButton(
             icon: const Icon(Icons.cloud_upload, color: Colors.blue),
             onPressed: () {
@@ -40,17 +36,15 @@ class MyReports extends HookWidget {
         ],
       ),
       
-      // LISTA DE ARTÍCULOS
+      // LISTA DE ARTÍCULOS PROPIOS
       body: BlocBuilder<MyArticlesBloc, MyArticlesState>(
         builder: (context, state) {
           if (state is MyArticlesLoading) {
             return const Center(child: CupertinoActivityIndicator());
           }
           
-          // Aceptamos Loaded O SyncSuccess para mostrar la lista
           if (state is MyArticlesLoaded || state is MyArticlesSyncSuccess) {
             
-            // Protección: Si la lista es nula o vacía
             if (state.articles == null || state.articles!.isEmpty) {
               return const Center(child: Text("No has escrito reportes aún."));
             }
@@ -60,13 +54,18 @@ class MyReports extends HookWidget {
               itemBuilder: (context, index) {
                 final article = state.articles![index];
                 
-                // ENVOLVEMOS EL WIDGET PARA AGREGAR INDICADOR DE ESTADO
+                // STACK: Artículo + Indicador de Estado
                 return Stack(
                   children: [
                     ArticleWidget(
                       article: article,
-                      // Desactivamos botones de guardar/like en vista de edición propia
+                      // En "Mis Reportes", generalmente no nos damos like/save a nosotros mismos
+                      // (o se maneja distinto), así que deshabilitamos esas opciones visualmente
+                      // o las dejamos por defecto.
                       isRemovable: false, 
+                      
+                      // Opcional: Si quieres permitir editar al tocar, define esto:
+                      // onArticlePressed: (article) => _navigateToEdit(context, article),
                     ),
                     
                     // INDICADOR DE ESTADO (Esquina superior derecha)

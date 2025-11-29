@@ -26,4 +26,11 @@ abstract class ArticleRepository {
   Future<void> clearLocalData();
 
   Future<void> syncSavedArticles(); // Traer favoritos de la nube
+
+  // [FALTABA ESTE] Obtener los artículos a los que di like
+  Future<List<ArticleEntity>> getLikedArticles();
+
+  Future<void> likeArticle(ArticleEntity article, bool isLiked);
+  //Sincronizar likes de la nube al local al iniciar sesión
+  Future<void> syncLikedArticles();
 }

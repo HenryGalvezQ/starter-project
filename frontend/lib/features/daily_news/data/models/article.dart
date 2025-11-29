@@ -18,6 +18,7 @@ class ArticleModel extends ArticleEntity {
     String? syncStatus,
     String? localImagePath,
     bool? isSaved,
+    bool? isLiked,
     String? category,
   }): super(
     id: id,
@@ -33,6 +34,7 @@ class ArticleModel extends ArticleEntity {
     syncStatus: syncStatus,
     localImagePath: localImagePath,
     isSaved: isSaved,
+    isLiked: isLiked,
     category: category,
   );
 
@@ -51,6 +53,7 @@ class ArticleModel extends ArticleEntity {
       syncStatus: map['syncStatus'] ?? 'synced', 
       localImagePath: null, 
       isSaved: false, 
+      isLiked: false,
       category: map['category'] ?? "General",
     );
   }
@@ -70,6 +73,7 @@ class ArticleModel extends ArticleEntity {
       syncStatus: entity.syncStatus,
       localImagePath: entity.localImagePath,
       isSaved: entity.isSaved,
+      isLiked: entity.isLiked,
       category: entity.category,
     );
   }

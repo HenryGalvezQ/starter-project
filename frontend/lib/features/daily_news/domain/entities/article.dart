@@ -17,7 +17,7 @@ class ArticleEntity extends Equatable {
   final String? syncStatus; // 'pending', 'synced'
   final String? localImagePath; // Ruta local en el dispositivo
   final bool? isSaved; // Identifica si es un marcador explícito
-
+  final bool? isLiked;
   const ArticleEntity({
     this.id,
     this.userId,
@@ -32,6 +32,7 @@ class ArticleEntity extends Equatable {
     this.syncStatus,
     this.localImagePath,
     this.isSaved,
+    this.isLiked,
     this.category,
   });
 
@@ -51,6 +52,7 @@ class ArticleEntity extends Equatable {
       syncStatus,
       localImagePath,
       isSaved,
+      isLiked,
       category,
     ];
   }

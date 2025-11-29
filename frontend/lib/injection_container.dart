@@ -22,6 +22,9 @@ import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/
 import 'features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/create_article.dart'; // Importar
 import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_saved_articles.dart'; // Import
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/get_liked_articles.dart'; // Importar
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/toggle_like_article.dart'; // Importar
+import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/sync_liked_articles.dart'; // IMPORTAR
 // Features - Auth
 import 'package:news_app_clean_architecture/features/auth/data/repository/auth_repository_impl.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/repository/auth_repository.dart';
@@ -31,7 +34,6 @@ import 'package:news_app_clean_architecture/features/auth/domain/usecases/logout
 import 'package:news_app_clean_architecture/features/auth/domain/usecases/register_user.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 
-import 'package:news_app_clean_architecture/features/daily_news/domain/usecases/clear_local_data.dart';
 final sl = GetIt.instance;
 
 
@@ -82,7 +84,16 @@ Future<void> initializeDependencies() async {
   sl.registerSingleton<RemoveArticleUseCase>(
     RemoveArticleUseCase(sl())
   );
-
+  // [NUEVO] Likes
+  sl.registerSingleton<GetLikedArticlesUseCase>(
+    GetLikedArticlesUseCase(sl())
+  );
+  sl.registerSingleton<ToggleLikeArticleUseCase>(
+    ToggleLikeArticleUseCase(sl())
+  );
+  sl.registerSingleton<SyncLikedArticlesUseCase>(
+    SyncLikedArticlesUseCase(sl())
+  );
   // Articles - Offline & My Reports (FASE 5)
   sl.registerSingleton<GetMyArticlesUseCase>(
     GetMyArticlesUseCase(sl())
@@ -113,11 +124,17 @@ Future<void> initializeDependencies() async {
     ()=> RemoteArticlesBloc(sl())
   );
   
-  // Local Articles
+  // ACTUALIZAR EL BLOC LOCAL (Ahora recibe 7 argumentos: 3 saved, 2 likes, 2 syncs)
+  // O podemos simplificar agregando un evento de sincronización.
+  // Vamos a inyectar los casos de uso de Sync en el LocalArticleBloc
+  
   sl.registerFactory<LocalArticleBloc>(
-    ()=> LocalArticleBloc(sl(),sl(),sl(),sl())
+    ()=> LocalArticleBloc(
+      sl(), sl(), sl(), // Saved (Get, Save, Remove)
+      sl(), sl(),       // Likes (Get, Toggle)
+      sl(), sl()        // Syncs (SyncSaved, SyncLiked) -> AGREGAR ESTOS
+    ) 
   );
-
   // Auth Bloc - ACTUALIZADO FASE 7 (5 Argumentos)
   sl.registerFactory<AuthBloc>(
     () => AuthBloc(sl(), sl(), sl(), sl(), sl())

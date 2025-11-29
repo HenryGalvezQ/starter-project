@@ -96,7 +96,7 @@ class _$AppDatabase extends AppDatabase {
       },
       onCreate: (database, version) async {
         await database.execute(
-            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `userId` TEXT, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `category` TEXT, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, PRIMARY KEY (`url`))');
+            'CREATE TABLE IF NOT EXISTS `article` (`id` INTEGER, `userId` TEXT, `author` TEXT, `title` TEXT, `description` TEXT, `url` TEXT, `urlToImage` TEXT, `publishedAt` TEXT, `content` TEXT, `likesCount` INTEGER, `category` TEXT, `syncStatus` TEXT, `localImagePath` TEXT, `isSaved` INTEGER, `isLiked` INTEGER, PRIMARY KEY (`url`))');
 
         await callback?.onCreate?.call(database, version);
       },
@@ -133,7 +133,9 @@ class _$ArticleDao extends ArticleDao {
                   'syncStatus': item.syncStatus,
                   'localImagePath': item.localImagePath,
                   'isSaved':
-                      item.isSaved == null ? null : (item.isSaved! ? 1 : 0)
+                      item.isSaved == null ? null : (item.isSaved! ? 1 : 0),
+                  'isLiked':
+                      item.isLiked == null ? null : (item.isLiked! ? 1 : 0)
                 }),
         _articleModelDeletionAdapter = DeletionAdapter(
             database,
@@ -154,7 +156,9 @@ class _$ArticleDao extends ArticleDao {
                   'syncStatus': item.syncStatus,
                   'localImagePath': item.localImagePath,
                   'isSaved':
-                      item.isSaved == null ? null : (item.isSaved! ? 1 : 0)
+                      item.isSaved == null ? null : (item.isSaved! ? 1 : 0),
+                  'isLiked':
+                      item.isLiked == null ? null : (item.isLiked! ? 1 : 0)
                 });
 
   final sqflite.DatabaseExecutor database;
@@ -185,6 +189,8 @@ class _$ArticleDao extends ArticleDao {
             localImagePath: row['localImagePath'] as String?,
             isSaved:
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
             category: row['category'] as String?));
   }
 
@@ -206,6 +212,8 @@ class _$ArticleDao extends ArticleDao {
             localImagePath: row['localImagePath'] as String?,
             isSaved:
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
             category: row['category'] as String?),
         arguments: [url]);
   }
@@ -229,6 +237,8 @@ class _$ArticleDao extends ArticleDao {
             localImagePath: row['localImagePath'] as String?,
             isSaved:
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
             category: row['category'] as String?),
         arguments: [userId]);
   }
@@ -252,6 +262,8 @@ class _$ArticleDao extends ArticleDao {
             localImagePath: row['localImagePath'] as String?,
             isSaved:
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
             category: row['category'] as String?),
         arguments: [userId]);
   }
@@ -275,6 +287,8 @@ class _$ArticleDao extends ArticleDao {
             localImagePath: row['localImagePath'] as String?,
             isSaved:
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
             category: row['category'] as String?),
         arguments: [userId]);
   }
@@ -292,6 +306,31 @@ class _$ArticleDao extends ArticleDao {
   @override
   Future<void> deleteAllArticles() async {
     await _queryAdapter.queryNoReturn('DELETE FROM article');
+  }
+
+  @override
+  Future<List<ArticleModel>> getLikedArticlesByUser(String userId) async {
+    return _queryAdapter.queryList(
+        'SELECT * FROM article WHERE isLiked = 1 AND userId = ?1',
+        mapper: (Map<String, Object?> row) => ArticleModel(
+            id: row['id'] as int?,
+            userId: row['userId'] as String?,
+            author: row['author'] as String?,
+            title: row['title'] as String?,
+            description: row['description'] as String?,
+            url: row['url'] as String?,
+            urlToImage: row['urlToImage'] as String?,
+            publishedAt: row['publishedAt'] as String?,
+            content: row['content'] as String?,
+            likesCount: row['likesCount'] as int?,
+            syncStatus: row['syncStatus'] as String?,
+            localImagePath: row['localImagePath'] as String?,
+            isSaved:
+                row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
+            isLiked:
+                row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
+            category: row['category'] as String?),
+        arguments: [userId]);
   }
 
   @override

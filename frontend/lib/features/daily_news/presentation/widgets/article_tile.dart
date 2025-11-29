@@ -9,6 +9,7 @@ import 'dart:io';
 class ArticleWidget extends HookWidget {
   final ArticleEntity? article;
   final bool isSavedInitially;
+  final bool isLikedInitially; // [NUEVO]
   final void Function(ArticleEntity article)? onArticlePressed;
   final void Function(ArticleEntity article, bool isSaved)? onBookmarkPressed;
   final void Function(ArticleEntity article)? onLikePressed;
@@ -20,6 +21,7 @@ class ArticleWidget extends HookWidget {
     this.article,
     this.onArticlePressed,
     this.isSavedInitially = false,
+    this.isLikedInitially = false, // [NUEVO] Default false
     this.onBookmarkPressed,
     this.onLikePressed,
     this.onRemove,
@@ -29,9 +31,11 @@ class ArticleWidget extends HookWidget {
   @override
   Widget build(BuildContext context) {
     // HOOKS: Estados locales para reactividad inmediata
-    final isLiked = useState(false);
+    // Inicializamos con los valores que vienen del Bloc (Base de Datos)
+    final isLiked = useState(isLikedInitially); 
     final isSaved = useState(isSavedInitially);
-    // Inicializamos el contador con el valor del modelo (o 0 si es nulo)
+    
+    // Inicializamos el contador con el valor del modelo
     final likeCount = useState(article!.likesCount ?? 0);
 
     return GestureDetector(
@@ -52,16 +56,14 @@ class ArticleWidget extends HookWidget {
   }
 
   Widget _buildImage(BuildContext context) {
-    // 1. Decidir qué Widget de imagen usar (Local vs Remoto)
     Widget imageWidget;
     
+    // Lógica para decidir si mostrar imagen Local o Remota
     if (article?.localImagePath != null && article!.localImagePath!.isNotEmpty) {
        final file = File(article!.localImagePath!);
-       // Si el archivo existe físicamente en el celular, lo usamos
        if (file.existsSync()) {
          imageWidget = Image.file(file, fit: BoxFit.cover);
        } else {
-         // Si la ruta existe en DB pero el archivo se borró (ej: cache cleaner), intentamos bajarlo de la nube
          imageWidget = CachedNetworkImage(
             imageUrl: article!.urlToImage ?? '', 
             fit: BoxFit.cover,
@@ -70,7 +72,6 @@ class ArticleWidget extends HookWidget {
          );
        }
     } else {
-       // Caso estándar: Imagen de internet
        imageWidget = CachedNetworkImage(
          imageUrl: article!.urlToImage ?? '',
          fit: BoxFit.cover,
@@ -79,7 +80,6 @@ class ArticleWidget extends HookWidget {
        );
     }
 
-    // 2. Construir el contenedor con la Imagen + Etiqueta de Categoría
     return Padding(
       padding: const EdgeInsetsDirectional.only(end: 14),
       child: ClipRRect(
@@ -88,15 +88,11 @@ class ArticleWidget extends HookWidget {
           width: MediaQuery.of(context).size.width / 3,
           height: double.maxFinite,
           decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
-          
-          // STACK: Permite poner elementos uno encima del otro
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Capa de Fondo: La Imagen
               imageWidget,
-              
-              // Capa Superior: Chip de Categoría (Solo si existe)
+              // Chip de Categoría
               if (article?.category != null && article!.category!.isNotEmpty)
                 Positioned(
                   bottom: 0,
@@ -104,7 +100,7 @@ class ArticleWidget extends HookWidget {
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    color: Colors.black54, // Fondo semitransparente para legibilidad
+                    color: Colors.black54,
                     child: Text(
                       article!.category!,
                       textAlign: TextAlign.center,
@@ -176,7 +172,7 @@ class ArticleWidget extends HookWidget {
                   ],
                 ),
 
-                // BOTONES
+                // BOTONES INTERACTIVOS
                 if (!isRemovable!)
                   Row(
                     children: [
@@ -187,36 +183,39 @@ class ArticleWidget extends HookWidget {
                       ),
                       const SizedBox(width: 4),
 
-                      // Botón LIKE
+                      // Botón LIKE (Cloud Sync)
                       _buildActionButton(
                         icon: isLiked.value ? Ionicons.thumbs_up : Ionicons.thumbs_up_outline,
                         color: isLiked.value ? Colors.blue : Colors.black54,
                         onTap: () {
-                          // Lógica de contador
+                          // 1. Lógica Visual (Optimista)
                           if (isLiked.value) {
-                            likeCount.value--;
+                             likeCount.value--; // Si quito like, resto 1
                           } else {
-                            likeCount.value++;
+                             likeCount.value++; // Si doy like, sumo 1
                           }
-                          isLiked.value = !isLiked.value; // Switch
+                          isLiked.value = !isLiked.value;
+
+                          // 2. Notificar al padre (BLoC)
                           onLikePressed?.call(article!);
                         },
                       ),
 
-                      // Botón GUARDAR
+                      // Botón GUARDAR (Local DB)
                       _buildActionButton(
                         icon: isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
                         color: isSaved.value ? Colors.orange : Colors.black54,
                         paddingLeft: 12,
                         onTap: () {
-                          isSaved.value = !isSaved.value; // Switch
+                          // Toggle Switch
+                          isSaved.value = !isSaved.value; 
                           onBookmarkPressed?.call(article!, isSaved.value);
                         },
                       ),
                     ],
                   ),
                 
-                // Botón BORRAR (Vista legacy/Saved)
+                // Botón BORRAR (Solo visible en Saved si se habilita)
                 if (isRemovable!)
                   _buildActionButton(
                     icon: Ionicons.trash_outline,
@@ -261,4 +260,3 @@ class ArticleWidget extends HookWidget {
     }
   }
 }
-

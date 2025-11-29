@@ -2,11 +2,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:ionicons/ionicons.dart';
-import '../../../domain/entities/article.dart';
-import '../../bloc/article/local/local_article_bloc.dart';
-import '../../bloc/article/local/local_article_event.dart';
-import '../../bloc/article/local/local_article_state.dart';
+import 'package:news_app_clean_architecture/features/daily_news/domain/entities/article.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_bloc.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_event.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_state.dart';
 import '../../widgets/article_tile.dart';
 
 class SavedArticles extends HookWidget {
@@ -27,21 +26,29 @@ class SavedArticles extends HookWidget {
   }
 
   Widget _buildBody() {
-    // Usamos BlocBuilder para escuchar cambios (Global State)
     return BlocBuilder<LocalArticleBloc, LocalArticlesState>(
       builder: (context, state) {
         if (state is LocalArticlesLoading) {
           return const Center(child: CupertinoActivityIndicator());
         } else if (state is LocalArticlesDone) {
-          return _buildArticlesList(context, state.articles!);
+          // CORRECCIÓN: Usamos savedArticles y manejamos nulos
+          return _buildArticlesList(
+            context, 
+            state.savedArticles ?? [], 
+            state.likedArticles ?? []
+          );
         }
         return Container();
       },
     );
   }
 
-  Widget _buildArticlesList(BuildContext context, List<ArticleEntity> articles) {
-    if (articles.isEmpty) {
+  Widget _buildArticlesList(
+    BuildContext context, 
+    List<ArticleEntity> savedArticles,
+    List<ArticleEntity> likedArticles
+  ) {
+    if (savedArticles.isEmpty) {
       return const Center(
           child: Text(
         'NO SAVED ARTICLES',
@@ -50,28 +57,62 @@ class SavedArticles extends HookWidget {
     }
 
     return ListView.builder(
-      itemCount: articles.length,
+      itemCount: savedArticles.length,
       itemBuilder: (context, index) {
+        final article = savedArticles[index];
+
+        // LÓGICA DE ESTADO CRUZADO:
+        // En esta pantalla TODOS están guardados (por definición),
+        // pero necesitamos saber cuáles tienen LIKE.
+        final bool isLiked = likedArticles.any((l) => l.url == article.url);
+
+        // Si tenemos una versión con like actualizado (contador +1), la usamos
+        final localLikedArticle = isLiked 
+            ? likedArticles.firstWhere((l) => l.url == article.url) 
+            : null;
+        
+        final displayArticle = localLikedArticle ?? article;
+
         return ArticleWidget(
-          article: articles[index],
-          // CLAVE: Como estamos en Guardados, nace "Activado" (Naranja)
+          // KEY REACTIVA: Si cambia el estado de like, repintamos
+          key: ValueKey("${article.url}_saved_${isLiked}"),
+
+          article: displayArticle,
+          
+          // Por definición, aquí siempre es true
           isSavedInitially: true, 
+          isLikedInitially: isLiked,
           
           onArticlePressed: (article) => _onArticlePressed(context, article),
           
-          // Lógica Unificada: Switch
-          onBookmarkPressed: (article, isSaved) {
-            if (!isSaved) {
-              // Si el usuario lo desmarca (pasa a false) -> ELIMINAR
+          // ACCIÓN 1: GUARDAR / BORRAR
+          onBookmarkPressed: (article, isSavedNow) {
+            // En esta pantalla, si quitas el marcador (isSavedNow == false),
+            // significa que lo quieres BORRAR de la lista.
+            if (!isSavedNow) {
               context.read<LocalArticleBloc>().add(RemoveArticle(article));
               ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
-                );
-            }
-            // Si lo vuelve a marcar (true) -> GUARDAR (Raro caso en esta lista, pero posible antes de que refresque)
+                const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
+              );
+            } 
+            // Caso raro: Si por alguna razón vuelve a true (switch rápido), guardamos de nuevo
             else {
-               context.read<LocalArticleBloc>().add(SaveArticle(article));
+              context.read<LocalArticleBloc>().add(SaveArticle(article));
             }
+          },
+
+          // ACCIÓN 2: LIKE (NUEVO)
+          onLikePressed: (article) {
+             final bool newStatus = !isLiked;
+             context.read<LocalArticleBloc>().add(
+               ToggleLikeArticle(article: article, isLiked: newStatus)
+             );
+             
+             if(newStatus) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text("Like 👍"), duration: Duration(milliseconds: 300)),
+               );
+             }
           },
         );
       },

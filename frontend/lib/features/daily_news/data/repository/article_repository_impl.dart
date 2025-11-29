@@ -284,9 +284,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
     if (user == null) return;
 
     print("SYNC: Descargando favoritos de la nube...");
-
     try {
-      // 1. Obtener lista de IDs guardados por el usuario
       final savedSnapshot = await _firestore
           .collection('users')
           .doc(user.uid)
@@ -295,7 +293,6 @@ class ArticleRepositoryImpl implements ArticleRepository {
 
       if (savedSnapshot.docs.isEmpty) return;
 
-      // 2. Para cada guardado, asegurar que esté en local
       for (final doc in savedSnapshot.docs) {
         final articleUrl = doc.data()['articleUrl'] as String?;
         if (articleUrl == null) continue;
@@ -303,12 +300,15 @@ class ArticleRepositoryImpl implements ArticleRepository {
         // A. Verificar si ya lo tenemos en local
         final localArticle = await _appDatabase.articleDAO.findArticleByUrl(articleUrl);
         
+        // PRESERVAMOS EL LIKE SI YA EXISTE
+        final bool preserveLiked = localArticle?.isLiked ?? false; // [NUEVO]
+        final int currentLikes = localArticle?.likesCount ?? 0;
+
         if (localArticle != null) {
-          // Si existe, solo actualizamos el flag isSaved
+          // Si existe, actualizamos isSaved=true manteniendo isLiked
           if (localArticle.isSaved != true) {
-             // Truco: Re-insertar con isSaved=true (OnConflict.replace actualiza)
              final updated = ArticleModel(
-                userId: user.uid, // Aseguramos propiedad
+                userId: user.uid, 
                 id: localArticle.id,
                 author: localArticle.author,
                 title: localArticle.title,
@@ -317,17 +317,19 @@ class ArticleRepositoryImpl implements ArticleRepository {
                 urlToImage: localArticle.urlToImage,
                 publishedAt: localArticle.publishedAt,
                 content: localArticle.content,
-                likesCount: localArticle.likesCount,
+                
+                likesCount: currentLikes, // Mantenemos contador
                 syncStatus: localArticle.syncStatus,
                 localImagePath: localArticle.localImagePath,
                 category: localArticle.category,
-                isSaved: true, // <--- ACTIVAMOS
+                
+                isSaved: true,     // <--- ACTIVAMOS
+                isLiked: preserveLiked // <--- PRESERVAMOS [CRÍTICO]
              );
              await _appDatabase.articleDAO.insertArticle(updated);
           }
         } else {
-          // B. Si NO existe en local, hay que descargarlo de la colección 'articles'
-          // (Esta es la parte difícil: buscar por URL en Firestore)
+          // B. Si NO existe en local, descargamos
           final articleQuery = await _firestore
               .collection('articles')
               .where('url', isEqualTo: articleUrl)
@@ -336,14 +338,11 @@ class ArticleRepositoryImpl implements ArticleRepository {
 
           if (articleQuery.docs.isNotEmpty) {
             final articleData = articleQuery.docs.first.data();
-            articleData['syncStatus'] = 'synced'; // Viene de nube
+            articleData['syncStatus'] = 'synced';
             
-            // Mapeamos a modelo
             var newModel = ArticleModel.fromJson(articleData);
-            
-            // Forzamos campos locales
             newModel = ArticleModel(
-                userId: user.uid, // Asignamos al usuario actual para que lo vea
+                userId: user.uid, 
                 url: newModel.url,
                 author: newModel.author,
                 title: newModel.title,
@@ -354,16 +353,154 @@ class ArticleRepositoryImpl implements ArticleRepository {
                 likesCount: newModel.likesCount,
                 category: newModel.category,
                 syncStatus: 'synced',
-                isSaved: true, // <--- IMPORTANTE
+                
+                isSaved: true,  // <--- ACTIVAMOS
+                isLiked: false, // Por defecto false, SyncLiked lo arreglará si es necesario
             );
-            
             await _appDatabase.articleDAO.insertArticle(newModel);
-            print("SYNC: Favorito descargado -> ${newModel.title}");
           }
         }
       }
     } catch (e) {
       print("SYNC SAVED ERROR: $e");
+    }
+  }
+
+  @override
+  Future<void> syncLikedArticles() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    print("SYNC: Descargando LIKES de la nube...");
+    try {
+      final likedSnapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('liked_articles')
+          .get();
+
+      if (likedSnapshot.docs.isEmpty) return;
+
+      for (final doc in likedSnapshot.docs) {
+        final articleId = doc.id;
+
+        // 1. Descargar info remota
+        final remoteArticleSnap = await _firestore.collection('articles').doc(articleId).get();
+        if (!remoteArticleSnap.exists) continue;
+
+        final articleData = remoteArticleSnap.data()!;
+        articleData['syncStatus'] = 'synced';
+        var model = ArticleModel.fromJson(articleData);
+
+        // 2. [CORRECCIÓN CRÍTICA] VERIFICAR ESTADO LOCAL PREVIO
+        // Antes de sobrescribir, miramos si SyncSaved ya pasó por aquí
+        final existingLocal = await _appDatabase.articleDAO.findArticleByUrl(model.url!);
+        final bool preserveSaved = existingLocal?.isSaved ?? false; // Recuperamos estado Saved
+        final String? existingLocalPath = existingLocal?.localImagePath;
+
+        // 3. FUSIONAR ESTADO
+        model = ArticleModel(
+            userId: user.uid,
+            url: model.url,
+            author: model.author,
+            title: model.title,
+            description: model.description,
+            content: model.content,
+            urlToImage: model.urlToImage,
+            publishedAt: model.publishedAt,
+            likesCount: model.likesCount,
+            category: model.category,
+            syncStatus: 'synced',
+            localImagePath: existingLocalPath, // Preservamos imagen local si hay
+            
+            isSaved: preserveSaved, // <--- AQUÍ ESTÁ EL FIX (Usamos el valor preservado)
+            isLiked: true           // <--- ACTIVAMOS
+        );
+
+        await _appDatabase.articleDAO.insertArticle(model);
+      }
+      print("SYNC: Likes sincronizados correctamente.");
+    } catch (e) {
+      print("SYNC LIKES ERROR: $e");
+    }
+  }
+
+  @override
+  Future<List<ArticleEntity>> getLikedArticles() async {
+    final user = _auth.currentUser;
+    if (user == null) return [];
+    return _appDatabase.articleDAO.getLikedArticlesByUser(user.uid);
+  }
+
+
+  // --- CORRECCIÓN DE LA TRANSACCIÓN (Anti-Duplicados) ---
+  @override
+  Future<void> likeArticle(ArticleEntity article, bool isLiked) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // 1. Local (Optimista) - IGUAL QUE ANTES
+    final localModel = ArticleModel(
+        // ... copia tus campos ...
+        userId: user.uid,
+        id: article.id,
+        author: article.author,
+        title: article.title,
+        description: article.description,
+        url: article.url,
+        urlToImage: article.urlToImage,
+        publishedAt: article.publishedAt,
+        content: article.content,
+        // UI Optimista
+        likesCount: (article.likesCount ?? 0) + (isLiked ? 1 : -1),
+        syncStatus: 'synced',
+        localImagePath: article.localImagePath,
+        isSaved: article.isSaved,
+        isLiked: isLiked, 
+        category: article.category ?? 'General',
+    );
+    await _appDatabase.articleDAO.insertArticle(localModel);
+
+    // 2. TRANSACCIÓN BLINDADA
+    try {
+       // Buscar referencia por URL si id no es confiable, o usar id si lo es.
+       // Asumimos búsqueda por URL para consistencia
+       QuerySnapshot snapshot = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
+       if (snapshot.docs.isEmpty) return;
+       
+       final docRef = snapshot.docs.first.reference;
+       // Referencia al registro de like del usuario
+       final userLikeRef = _firestore.collection('users').doc(user.uid).collection('liked_articles').doc(snapshot.docs.first.id);
+
+       await _firestore.runTransaction((transaction) async {
+        final articleSnapshot = await transaction.get(docRef);
+        final userLikeSnapshot = await transaction.get(userLikeRef); // LEEMOS SI YA EXISTE
+
+        if (!articleSnapshot.exists) return;
+
+        int currentLikes = articleSnapshot.data() is Map 
+            ? (articleSnapshot.get('likesCount') ?? 0) : 0;
+
+        // LÓGICA DE PROTECCIÓN:
+        // Solo sumamos si la UI dice "Like" Y no existe registro en base de datos.
+        // Esto previene que si la UI está desincronizada (botón gris) pero la DB dice que ya diste like, sumes doble.
+        
+        if (isLiked && !userLikeSnapshot.exists) {
+           // Caso Real: Usuario da Like y no lo tenía
+           transaction.update(docRef, {'likesCount': currentLikes + 1});
+           transaction.set(userLikeRef, {'likedAt': FieldValue.serverTimestamp()});
+        } 
+        else if (!isLiked && userLikeSnapshot.exists) {
+           // Caso Real: Usuario quita Like y sí lo tenía
+           int newCount = currentLikes > 0 ? currentLikes - 1 : 0;
+           transaction.update(docRef, {'likesCount': newCount});
+           transaction.delete(userLikeRef);
+        }
+        // Si (isLiked && userLikeSnapshot.exists) -> La UI estaba mal (gris), pero ya tenía like. NO HACEMOS NADA en el contador remoto, pero la UI local ya se arregló en el paso 1.
+      });
+
+    } catch (e) {
+      print("TRANSACTION ERROR: $e");
     }
   }
 }

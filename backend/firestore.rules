@@ -3,42 +3,59 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Función auxiliar para validar que el usuario está autenticado
+    // 1. VALIDACIONES AUXILIARES
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Función para validar que el usuario es el dueño del documento
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // Reglas para la colección de usuarios
-    match /users/{userId} {
-      allow read: if true; // Perfiles públicos (opcional, según diseño)
-      allow write: if isAuthenticated() && isOwner(userId);
-    
+    // [NUEVO] Validación estricta para Likes
+    // Permite actualizar SOLO si el único campo que cambia es 'likesCount'
+    function isLikeUpdate() {
+       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount']);
+    }
 
-      // [NUEVO] Sub-colección: Guardados
-      // Solo el dueño puede ver y editar sus guardados
+    // 2. REGLAS DE USUARIOS
+    match /users/{userId} {
+      allow read: if true; 
+      allow write: if isAuthenticated() && isOwner(userId);
+
+      // Sub-colección: Guardados (Ya implementado en 8.1)
       match /saved_articles/{document=**} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // [NUEVO TAREA 8.2] Sub-colección: Likes
+      // Necesario para saber QUÉ artículos ha likeado el usuario (Persistencia de Switch)
+      match /liked_articles/{document=**} {
         allow read, write: if isAuthenticated() && isOwner(userId);
       }
     }
 
-    // Reglas para los artículos (Noticias)
+    // 3. REGLAS DE ARTÍCULOS
     match /articles/{articleId} {
-      // CUALQUIERA puede leer las noticias (Requerimiento de Feed Público)
+      // Lectura pública
       allow read: if true;
 
-      // SOLO usuarios autenticados pueden crear o editar
-      // Además, validamos que el campo 'userId' coincida con quien hace la petición
+      // Creación: Solo usuarios autenticados y dueños de la data
       allow create: if isAuthenticated() 
                     && request.resource.data.userId == request.auth.uid
                     && request.resource.data.keys().hasAll(['title', 'content', 'category', 'publishedAt']);
       
-      allow update, delete: if isAuthenticated() 
-                            && resource.data.userId == request.auth.uid;
+      // Actualización (Update):
+      // CASO A: El dueño puede editar todo (título, contenido, etc.)
+      // CASO B: CUALQUIER usuario autenticado puede actualizar SOLO el contador de likes
+      allow update: if isAuthenticated() 
+                    && (
+                        resource.data.userId == request.auth.uid || 
+                        isLikeUpdate()
+                       );
+      
+      // Borrado: Solo el dueño
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
   }
 }

@@ -46,4 +46,8 @@ abstract class ArticleDao {
   // Limpieza total (Seguridad extra al cerrar sesión)
   @Query('DELETE FROM article')
   Future<void> deleteAllArticles();
+
+  // [NUEVO] Obtener solo los likes de ESTE usuario
+  @Query("SELECT * FROM article WHERE isLiked = 1 AND userId = :userId")
+  Future<List<ArticleModel>> getLikedArticlesByUser(String userId);
 }

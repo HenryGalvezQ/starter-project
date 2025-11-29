@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:ionicons/ionicons.dart';
-import '../../../../../injection_container.dart';
 import '../../../domain/entities/article.dart';
 import '../../bloc/article/local/local_article_bloc.dart';
-import '../../bloc/article/local/local_article_event.dart';
-import '../../bloc/article/local/local_article_state.dart'; // NECESARIO
+import '../../bloc/article/local/local_article_event.dart'; // Importante para eventos
 
 class ArticleDetailsView extends HookWidget {
   final ArticleEntity? article;
@@ -15,14 +13,15 @@ class ArticleDetailsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    // HOOKS: Solo para Likes
-    final isLiked = useState(false);
+    // HOOKS: Inicializamos con el estado que viene del Feed (Sincronización visual)
+    final isSaved = useState(article!.isSaved ?? false);
+    final isLiked = useState(article!.isLiked ?? false); 
     final likeCount = useState(article!.likesCount ?? 0);
 
     return Scaffold(
       appBar: _buildAppBar(context),
       body: _buildBody(context, isLiked, likeCount),
-      floatingActionButton: _buildFloatingActionButton(context),
+      floatingActionButton: _buildFloatingActionButton(context, isSaved),
     );
   }
 
@@ -56,12 +55,14 @@ class ArticleDetailsView extends HookWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // TÍTULO
           Text(
-            article!.title!,
+            article!.title ?? '',
             style: const TextStyle(fontFamily: 'Butler', fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 8),
 
+          // AUTOR Y CATEGORÍA
           Row(
             children: [
               Container(
@@ -88,20 +89,23 @@ class ArticleDetailsView extends HookWidget {
 
           const SizedBox(height: 14),
           
+          // FECHA + LIKES
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // FECHA
               Row(
                 children: [
                   const Icon(Ionicons.time_outline, size: 16),
                   const SizedBox(width: 4),
                   Text(
-                    article!.publishedAt!,
+                    article!.publishedAt ?? '',
                     style: const TextStyle(fontSize: 12),
                   ),
                 ],
               ),
               
+              // LIKES (Interactivo + Cloud Sync)
               Row(
                 children: [
                   Text(
@@ -111,17 +115,23 @@ class ArticleDetailsView extends HookWidget {
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () {
-                      if (isLiked.value) {
-                        likeCount.value--;
-                      } else {
-                        likeCount.value++;
-                      }
-                      isLiked.value = !isLiked.value;
+                      // 1. Calcular nueva acción
+                      final bool newStatus = !isLiked.value;
                       
+                      // 2. Actualizar UI Local (Optimista)
+                      isLiked.value = newStatus;
+                      likeCount.value += newStatus ? 1 : -1;
+
+                      // 3. Disparar Evento al BLoC (Sync Cloud + Local DB)
+                      context.read<LocalArticleBloc>().add(
+                        ToggleLikeArticle(article: article!, isLiked: newStatus)
+                      );
+
+                      // 4. Feedback
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Like actualizado 👍"),
-                          duration: Duration(milliseconds: 300),
+                        SnackBar(
+                          content: Text(newStatus ? "Like 👍" : "Like removido"),
+                          duration: const Duration(milliseconds: 300),
                         ),
                       );
                     },
@@ -141,6 +151,9 @@ class ArticleDetailsView extends HookWidget {
   }
 
   Widget _buildArticleImage() {
+    if (article?.urlToImage == null || article!.urlToImage!.isEmpty) {
+       return const SizedBox(height: 20);
+    }
     return Container(
       width: double.maxFinite,
       height: 250,
@@ -170,40 +183,31 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  // BOTÓN GUARDAR (FAB) - SWITCH GLOBAL
-  Widget _buildFloatingActionButton(BuildContext context) {
-    // Usamos BlocBuilder para escuchar la verdad absoluta de la BD
-    return BlocBuilder<LocalArticleBloc, LocalArticlesState>(
-      builder: (context, state) {
-        // Verificar si este artículo ya está guardado
-        bool isActuallySaved = false;
-        if (state is LocalArticlesDone && state.articles != null) {
-           isActuallySaved = state.articles!.any((element) => element.url == article!.url);
+  // BOTÓN GUARDAR (FAB) - Lógica Switch Global
+  Widget _buildFloatingActionButton(BuildContext context, ValueNotifier<bool> isSaved) {
+    return FloatingActionButton(
+      backgroundColor: isSaved.value ? Colors.orange : Colors.blueAccent,
+      onPressed: () {
+        if (isSaved.value) {
+          // Si ya estaba guardado -> REMOVER
+          context.read<LocalArticleBloc>().add(RemoveArticle(article!));
+          isSaved.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
+          );
+        } else {
+          // Si no estaba guardado -> GUARDAR
+          context.read<LocalArticleBloc>().add(SaveArticle(article!));
+          isSaved.value = true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Guardado en favoritos'), duration: Duration(milliseconds: 500)),
+          );
         }
-
-        return FloatingActionButton(
-          backgroundColor: isActuallySaved ? Colors.orange : Colors.blueAccent,
-          onPressed: () {
-            if (isActuallySaved) {
-              // Si ya está guardado -> BORRAR
-              context.read<LocalArticleBloc>().add(RemoveArticle(article!));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Eliminado de favoritos'), duration: Duration(milliseconds: 500)),
-              );
-            } else {
-              // Si no está guardado -> GUARDAR
-              context.read<LocalArticleBloc>().add(SaveArticle(article!));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Guardado en favoritos'), duration: Duration(milliseconds: 500)),
-              );
-            }
-          },
-          child: Icon(
-            isActuallySaved ? Ionicons.bookmark : Ionicons.bookmark_outline,
-            color: Colors.white,
-          ),
-        );
       },
+      child: Icon(
+        isSaved.value ? Ionicons.bookmark : Ionicons.bookmark_outline,
+        color: Colors.white,
+      ),
     );
   }
 
