@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:ionicons/ionicons.dart';
 import '../../domain/entities/article.dart';
+import 'package:intl/intl.dart';
 import 'dart:io';
 
 class ArticleWidget extends HookWidget {
@@ -85,7 +86,7 @@ class ArticleWidget extends HookWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20.0),
         child: Container(
-          width: MediaQuery.of(context).size.width / 3,
+          width: MediaQuery.of(context).size.width / 2.4,
           height: double.maxFinite,
           decoration: BoxDecoration(color: Colors.black.withOpacity(0.08)),
           child: Stack(
@@ -268,12 +269,31 @@ class ArticleWidget extends HookWidget {
     );
   }
 
-  String _formatDate(String? date) {
-    if (date == null) return '';
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'Reciente';
+
     try {
-      return date.split('T').first;
+      final date = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+      final timeFormat = DateFormat('hh:mm a'); 
+      final time = timeFormat.format(date);
+
+      // Hoy
+      if (date.year == now.year && date.month == now.month && date.day == now.day) {
+        return 'Hoy, $time';
+      }
+
+      // Ayer
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day) {
+        return 'Ayer, $time';
+      }
+
+      // Fecha normal (ej: 22/11)
+      final dateFormat = DateFormat('dd/MM');
+      return '${dateFormat.format(date)}'; // En la tarjeta lista es mejor algo corto
     } catch (e) {
-      return date;
+      return 'Reciente';
     }
   }
 

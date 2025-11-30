@@ -15,6 +15,9 @@ class RegisterScreen extends HookWidget {
     final emailController = useTextEditingController();
     final passwordController = useTextEditingController();
 
+    // [NUEVO] Hook para ver/ocultar contraseña
+    final isPasswordVisible = useState(false);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -46,95 +49,112 @@ class RegisterScreen extends HookWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  "Únete a Symmetry",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Crea tu perfil de periodista fitness",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 30),
-
-                // USERNAME INPUT
-                TextField(
-                  controller: usernameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre de Usuario',
-                    hintText: 'Ej: Juan Periodista',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person_outline),
+          // [MEJORA UI] Center + SingleChildScrollView para evitar overflow y centrar contenido
+          return Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    "Únete a Symmetry",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(height: 16),
-
-                // EMAIL INPUT
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email_outlined),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Crea tu perfil de periodista fitness",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 30),
 
-                // PASSWORD INPUT
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
+                  // USERNAME INPUT
+                  TextField(
+                    controller: usernameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre de Usuario',
+                      hintText: 'Ej: Juan Periodista',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
-                // REGISTER BUTTON
-                ElevatedButton(
-                  onPressed: () {
-                    final username = usernameController.text.trim();
-                    final email = emailController.text.trim();
-                    final password = passwordController.text.trim();
+                  // EMAIL INPUT
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
 
-                    if (username.isNotEmpty &&
-                        email.isNotEmpty &&
-                        password.isNotEmpty) {
-                      
-                      // Disparamos el evento de Registro
-                      context.read<AuthBloc>().add(AuthRegister(
-                            email: email,
-                            password: password,
-                            username: username,
-                          ));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Por favor llena todos los campos"),
+                  // PASSWORD INPUT CON TOGGLE
+                  TextField(
+                    controller: passwordController,
+                    // Lógica del ojo
+                    obscureText: !isPasswordVisible.value, 
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      // Icono interactivo
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          isPasswordVisible.value 
+                              ? Icons.visibility 
+                              : Icons.visibility_off,
+                          color: Colors.grey,
                         ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                        onPressed: () {
+                          isPasswordVisible.value = !isPasswordVisible.value;
+                        },
+                      ),
+                    ),
                   ),
-                  child: const Text(
-                    "REGISTRARSE",
-                    style: TextStyle(color: Colors.white),
+                  const SizedBox(height: 24),
+
+                  // REGISTER BUTTON
+                  ElevatedButton(
+                    onPressed: () {
+                      final username = usernameController.text.trim();
+                      final email = emailController.text.trim();
+                      final password = passwordController.text.trim();
+
+                      if (username.isNotEmpty &&
+                          email.isNotEmpty &&
+                          password.isNotEmpty) {
+                        
+                        // Disparamos el evento de Registro
+                        context.read<AuthBloc>().add(AuthRegister(
+                              email: email,
+                              password: password,
+                              username: username,
+                            ));
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Por favor llena todos los campos"),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black87,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text(
+                      "REGISTRARSE",
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

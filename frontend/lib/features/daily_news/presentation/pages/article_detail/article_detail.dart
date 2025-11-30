@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:intl/intl.dart';
 import 'package:ionicons/ionicons.dart';
 import '../../../domain/entities/article.dart';
 import '../../bloc/article/local/local_article_bloc.dart';
@@ -99,7 +100,7 @@ class ArticleDetailsView extends HookWidget {
                   const Icon(Ionicons.time_outline, size: 16),
                   const SizedBox(width: 4),
                   Text(
-                    article!.publishedAt ?? '',
+                    _formatDate(article!.publishedAt),
                     style: const TextStyle(fontSize: 12),
                   ),
                 ],
@@ -213,5 +214,37 @@ class ArticleDetailsView extends HookWidget {
 
   void _onBackButtonTapped(BuildContext context) {
     Navigator.pop(context);
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return '';
+
+    try {
+      // 1. Convertir string a objeto DateTime local
+      final date = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+
+      // 2. Formateador de hora (ej: 07:23 PM)
+      final timeFormat = DateFormat('hh:mm a'); 
+      final time = timeFormat.format(date);
+
+      // 3. Lógica para "Hoy"
+      if (date.year == now.year && date.month == now.month && date.day == now.day) {
+        return 'Hoy, $time';
+      }
+
+      // 4. Lógica para "Ayer"
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day) {
+        return 'Ayer, $time';
+      }
+
+      // 5. Cualquier otro día (ej: 22/11 a las 07:23 PM)
+      final dateFormat = DateFormat('dd/MM');
+      return '${dateFormat.format(date)} a las $time';
+
+    } catch (e) {
+      return dateString; // Si falla, devolvemos el original
+    }
   }
 }

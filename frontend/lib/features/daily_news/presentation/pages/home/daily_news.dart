@@ -28,6 +28,7 @@ import 'package:news_app_clean_architecture/features/auth/presentation/pages/pro
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/home/my_reports.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/saved_article/saved_article.dart';
 import 'package:news_app_clean_architecture/core/constants/constants.dart';
+import '../../widgets/article_tile_shimmer.dart';
 import '../../../domain/entities/article.dart';
 import '../../widgets/article_tile.dart';
 
@@ -139,20 +140,82 @@ class DailyNews extends HookWidget {
               onTap: (index) {
                 tabIndex.value = index;
               },
-              selectedItemColor: Colors.black,
-              unselectedItemColor: Colors.grey,
+              
+              backgroundColor: Colors.white,
+              type: BottomNavigationBarType.fixed,
+              elevation: 0,
+              
+              // CONFIGURACIÓN DE ETIQUETAS
+              showSelectedLabels: false, // Ocultamos la etiqueta default para dibujarla nosotros
               showUnselectedLabels: true,
-              type: BottomNavigationBarType.fixed, 
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.fitness_center), label: 'News'),
-                BottomNavigationBarItem(icon: Icon(Icons.article_outlined), label: 'Reports'),
-                BottomNavigationBarItem(icon: Icon(Icons.bookmark_border), label: 'Saved'),
-                BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+              
+              // TAMAÑOS
+              selectedFontSize: 0, 
+              unselectedFontSize: 11,
+              
+              // COLORES
+              unselectedItemColor: Colors.black,
+              selectedItemColor: Colors.black, // Color base (aunque activeIcon lo sobrescribe)
+              
+              items: [
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.fitness_center),
+                  label: 'News',
+                  activeIcon: _buildActiveIcon(Icons.fitness_center, 'News'),
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.article_outlined),
+                  label: 'Reports',
+                  activeIcon: _buildActiveIcon(Icons.article_outlined, 'Reports'),
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.bookmark_border),
+                  label: 'Saved',
+                  activeIcon: _buildActiveIcon(Icons.bookmark, 'Saved'),
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.person_outline),
+                  label: 'Profile',
+                  activeIcon: _buildActiveIcon(Icons.person, 'Profile'),
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+  // Helper: Icono + Texto vertical dentro de una "Cápsula" negra
+  Widget _buildActiveIcon(IconData icon, String label) {
+    return Container(
+      // Ajustamos el padding: menos horizontal para que no sea tan ancho, 
+      // suficiente vertical para dar aire.
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      
+      // DECORACIÓN
+      decoration: BoxDecoration(
+        color: Colors.black,
+        // [CLAVE] Un radio muy alto (50) fuerza bordes completamente circulares (Estadio/Píldora)
+        // Ya no parecerá un cuadrado redondeado.
+        borderRadius: BorderRadius.circular(50), 
+      ),
+      
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center, // Asegura centrado vertical
+        children: [
+          Icon(icon, color: Colors.white, size: 20), // Icono ligeramente más compacto
+          const SizedBox(height: 2), 
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -365,7 +428,11 @@ class _FitnessNewsView extends HookWidget {
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, remoteState) {
         if (remoteState is RemoteArticlesLoading) {
-          return const Center(child: CupertinoActivityIndicator());
+          // Mostramos 5 esqueletos falsos para dar sensación de velocidad
+          return ListView.builder(
+            itemCount: 5,
+            itemBuilder: (_, __) => const ArticleTileShimmer(),
+          );
         }
         if (remoteState is RemoteArticlesError) {
           return const Center(child: Icon(Icons.refresh));
@@ -486,4 +553,6 @@ class _FitnessNewsView extends HookWidget {
   void _onArticlePressed(BuildContext context, ArticleEntity article) {
     Navigator.pushNamed(context, '/ArticleDetails', arguments: article);
   }
+
+  
 }

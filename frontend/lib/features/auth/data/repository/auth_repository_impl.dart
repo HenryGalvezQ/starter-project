@@ -14,11 +14,34 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Stream<UserEntity?> getAuthState() {
-    return _firebaseAuth.authStateChanges().map((firebaseUser) {
+    // Usamos asyncMap para poder hacer llamadas asíncronas (Firestore) dentro del stream
+    return _firebaseAuth.authStateChanges().asyncMap((firebaseUser) async {
       if (firebaseUser == null) {
         return null;
       }
-      return UserModel.fromFirebase(firebaseUser);
+
+      // INTENTO DE RECUPERACIÓN DE DATOS (HYDRATION)
+      // Si el usuario de Auth no tiene nombre, lo buscamos en la base de datos
+      String? displayName = firebaseUser.displayName;
+      
+      try {
+        if (displayName == null || displayName.isEmpty) {
+          final userDoc = await _firestore.collection('users').doc(firebaseUser.uid).get();
+          if (userDoc.exists) {
+            displayName = userDoc.data()?['displayName'];
+            print("👤 PERFIL: Nombre recuperado de Firestore: $displayName");
+          }
+        }
+      } catch (e) {
+        print("⚠️ Error recuperando perfil extendido: $e");
+      }
+
+      // Retornamos el modelo fusionando Auth + Firestore
+      return UserModel(
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: displayName ?? firebaseUser.email!.split('@')[0], // Fallback final
+      );
     });
   }
 

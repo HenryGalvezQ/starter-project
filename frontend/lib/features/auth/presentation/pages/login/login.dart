@@ -13,9 +13,21 @@ class LoginScreen extends HookWidget {
   Widget build(BuildContext context) {
     final emailController = useTextEditingController();
     final passwordController = useTextEditingController();
+    
+    // Estado para controlar la visibilidad de la contraseña
+    final isPasswordVisible = useState(false);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Inicia Sesión")),
+      // [FIX] Estilo de AppBar igualado al de Registro
+      appBar: AppBar(
+        title: const Text(
+          "Inicia Sesión",
+          style: TextStyle(color: Colors.black), 
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthError) {
@@ -23,82 +35,93 @@ class LoginScreen extends HookWidget {
               SnackBar(content: Text(state.message)),
             );
           }
-          if (state is Authenticated) {
-             // El BlocListener global en DailyNews manejará la bienvenida,
-             // pero aquí podríamos navegar si fuera una pantalla full-screen.
-             // Como lo usaremos dentro de un Tab, no hacemos pop necesariamente.
-          }
         },
         builder: (context, state) {
           if (state is AuthLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          return Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Icon(Icons.fitness_center, size: 80, color: Colors.black87),
-                const SizedBox(height: 40),
-                
-                // Email Input
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                
-                // Password Input
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                ),
-                const SizedBox(height: 24),
+          
+          return Center(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(Icons.fitness_center, size: 80, color: Colors.black87),
+                    const SizedBox(height: 40),
+                    
+                    // Email Input
+                    TextField(
+                      controller: emailController,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Password Input
+                    TextField(
+                      controller: passwordController,
+                      obscureText: !isPasswordVisible.value, 
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isPasswordVisible.value 
+                                ? Icons.visibility 
+                                : Icons.visibility_off,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            isPasswordVisible.value = !isPasswordVisible.value;
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
 
-                // Login Button
-                ElevatedButton(
-                  onPressed: () {
-                    final email = emailController.text.trim();
-                    final password = passwordController.text.trim();
-                    if (email.isNotEmpty && password.isNotEmpty) {
-                      context.read<AuthBloc>().add(AuthLogin(email, password));
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Llena todos los campos")),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text("INGRESAR", style: TextStyle(color: Colors.white)),
+                    // Login Button
+                    ElevatedButton(
+                      onPressed: () {
+                        final email = emailController.text.trim();
+                        final password = passwordController.text.trim();
+                        if (email.isNotEmpty && password.isNotEmpty) {
+                          context.read<AuthBloc>().add(AuthLogin(email, password));
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Llena todos los campos")),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black87,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text("INGRESAR", style: TextStyle(color: Colors.white)),
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Register Link
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
+                      },
+                      child: const Text("¿No tienes cuenta? Regístrate"),
+                    )
+                  ],
                 ),
-                
-                const SizedBox(height: 16),
-                
-                // Register Link - ACTUALIZADO
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                    );
-                  },
-                  child: const Text("¿No tienes cuenta? Regístrate"),
-                )
-              ],
+              ),
             ),
           );
         },

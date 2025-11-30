@@ -61,6 +61,10 @@ class MyReports extends StatelessWidget {
                       // Desactivamos el botón de borrar estandar del widget,
                       // usaremos nuestros propios botones personalizados arriba.
                       isRemovable: false, 
+                      // [NUEVO] Habilitar clic para ver detalles
+                      onArticlePressed: (article) {
+                        Navigator.pushNamed(context, '/ArticleDetails', arguments: article);
+                      },
                     ),
                     
                     // CAPA 2: Indicador de Sincronización (Esquina Superior Izquierda)
