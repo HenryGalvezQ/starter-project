@@ -4,35 +4,33 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_state.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/widgets/symmetry_logo.dart';
 
 class RegisterScreen extends HookWidget {
   const RegisterScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Hooks para gestionar los inputs sin boilerplate
     final usernameController = useTextEditingController();
     final emailController = useTextEditingController();
     final passwordController = useTextEditingController();
-
-    // [NUEVO] Hook para ver/ocultar contraseña
     final isPasswordVisible = useState(false);
+
+    // Detectar tema
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "Crear Cuenta",
-          style: TextStyle(color: Colors.black),
+          // Usamos el estilo del tema
+          style: Theme.of(context).appBarTheme.titleTextStyle,
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        // Quitamos colores fijos
       ),
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is Authenticated) {
-            // Éxito: El usuario se creó y Firebase Auth avisó.
-            // Cerramos esta pantalla para volver a la navegación principal.
             Navigator.of(context).pop(); 
           }
           if (state is AuthError) {
@@ -49,7 +47,6 @@ class RegisterScreen extends HookWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // [MEJORA UI] Center + SingleChildScrollView para evitar overflow y centrar contenido
           return Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
@@ -57,10 +54,23 @@ class RegisterScreen extends HookWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    "Únete a Symmetry",
+                  
+                  // --- AGREGAMOS EL LOGO AQUÍ TAMBIÉN ---
+                  const SizedBox(
+                      height: 100, 
+                      child: SymmetryAppLogo()
+                  ),
+                  const SizedBox(height: 20),
+
+                  Text(
+                    "Únete a Symmetry News",
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    // Color dinámico según tema
+                    style: TextStyle(
+                      fontSize: 24, 
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black
+                    ),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -94,16 +104,14 @@ class RegisterScreen extends HookWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  // PASSWORD INPUT CON TOGGLE
+                  // PASSWORD INPUT
                   TextField(
                     controller: passwordController,
-                    // Lógica del ojo
                     obscureText: !isPasswordVisible.value, 
                     decoration: InputDecoration(
                       labelText: 'Contraseña',
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.lock_outline),
-                      // Icono interactivo
                       suffixIcon: IconButton(
                         icon: Icon(
                           isPasswordVisible.value 
@@ -130,7 +138,6 @@ class RegisterScreen extends HookWidget {
                           email.isNotEmpty &&
                           password.isNotEmpty) {
                         
-                        // Disparamos el evento de Registro
                         context.read<AuthBloc>().add(AuthRegister(
                               email: email,
                               password: password,
@@ -145,12 +152,14 @@ class RegisterScreen extends HookWidget {
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black87,
+                      // Lógica de color invertido para visibilidad
+                      backgroundColor: isDark ? Colors.white : Colors.black87,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
+                    child: Text(
                       "REGISTRARSE",
-                      style: TextStyle(color: Colors.white),
+                      // Texto invertido
+                      style: TextStyle(color: isDark ? Colors.black : Colors.white),
                     ),
                   ),
                 ],

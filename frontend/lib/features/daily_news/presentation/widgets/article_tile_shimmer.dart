@@ -16,7 +16,7 @@ class ArticleTileShimmer extends StatelessWidget {
           children: [
             // 1. IMAGEN FAKE
             Container(
-              width: MediaQuery.of(context).size.width / 3,
+              width: MediaQuery.of(context).size.width / 2.4,
               height: double.maxFinite,
               decoration: BoxDecoration(
                 color: Colors.white,

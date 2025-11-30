@@ -247,7 +247,7 @@ class _FitnessNewsView extends HookWidget {
                 ),
                 onChanged: (query) => triggerUpdate(),
               )
-            : Text('Fitness News', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+            : Text('Symmetry News', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
         
         actions: [
           IconButton(

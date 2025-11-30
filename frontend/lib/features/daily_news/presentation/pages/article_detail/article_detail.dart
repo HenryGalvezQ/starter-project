@@ -49,6 +49,7 @@ class ArticleDetailsView extends HookWidget {
           _buildArticleTitleAndDate(context, isLiked, likeCount, isDark),
           _buildArticleImage(),
           _buildArticleDescription(),
+          const SizedBox(height: 80),
         ],
       ),
     );
@@ -188,7 +189,8 @@ class ArticleDetailsView extends HookWidget {
         article!.content != null && article!.content!.isNotEmpty 
             ? article!.content! 
             : article!.description ?? '',
-        textAlign: TextAlign.justify,
+        // CAMBIO AQUÍ: Asegúrate de que diga 'justify'
+        textAlign: TextAlign.justify, 
         style: TextStyle(
           fontSize: 16,
           height: 1.5,

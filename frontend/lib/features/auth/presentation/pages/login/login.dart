@@ -5,6 +5,7 @@ import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_state.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/pages/register/register.dart';
+import 'package:news_app_clean_architecture/features/daily_news/presentation/widgets/symmetry_logo.dart';
 
 class LoginScreen extends HookWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -13,20 +14,17 @@ class LoginScreen extends HookWidget {
   Widget build(BuildContext context) {
     final emailController = useTextEditingController();
     final passwordController = useTextEditingController();
-    
-    // Estado para controlar la visibilidad de la contraseña
     final isPasswordVisible = useState(false);
+    
+    // Detectar tema
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      // [FIX] Estilo de AppBar igualado al de Registro
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "Inicia Sesión",
-          style: TextStyle(color: Colors.black), 
+          style: Theme.of(context).appBarTheme.titleTextStyle, 
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
       ),
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
@@ -49,8 +47,27 @@ class LoginScreen extends HookWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.fitness_center, size: 80, color: Colors.black87),
-                    const SizedBox(height: 40),
+                    
+                    // 1. LOGO
+                    const SizedBox(
+                      height: 120, 
+                      child: SymmetryAppLogo(),
+                    ),
+
+                    // 2. TEXTO "Symmetry News" (Nuevo Agregado)
+                    const SizedBox(height: 20), // Separación pequeña entre logo y texto
+                    Text(
+                      "Symmetry News",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        // Color dinámico: Blanco en Dark, Negro en Light
+                        color: isDark ? Colors.white : Colors.black
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 40), // Separación hacia los inputs
                     
                     // Email Input
                     TextField(
@@ -101,10 +118,13 @@ class LoginScreen extends HookWidget {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black87,
+                        backgroundColor: isDark ? Colors.white : Colors.black87,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: const Text("INGRESAR", style: TextStyle(color: Colors.white)),
+                      child: Text(
+                        "INGRESAR", 
+                        style: TextStyle(color: isDark ? Colors.black : Colors.white)
+                      ),
                     ),
                     
                     const SizedBox(height: 16),

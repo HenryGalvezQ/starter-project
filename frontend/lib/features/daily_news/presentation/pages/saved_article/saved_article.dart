@@ -28,7 +28,7 @@ class SavedArticles extends HookWidget {
       leading: const SymmetryAppLogo(),
       leadingWidth: 50,
       title: Text(
-        'Saved Articles', 
+        'Artículos Guardados', 
         style: TextStyle(
           color: isDark ? Colors.white : Colors.black,
           fontWeight: FontWeight.bold
@@ -63,7 +63,7 @@ class SavedArticles extends HookWidget {
     if (savedArticles.isEmpty) {
       return const Center(
           child: Text(
-        'NO SAVED ARTICLES',
+        'No hay artículos guardados.',
         style: TextStyle(color: Colors.black),
       ));
     }

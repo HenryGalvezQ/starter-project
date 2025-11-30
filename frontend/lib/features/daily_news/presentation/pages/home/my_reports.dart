@@ -26,7 +26,7 @@ class MyReports extends StatelessWidget {
         leadingWidth: 50,
 
         title: Text(
-          'My Reports', 
+          'Mis Reportes', 
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black,
             fontWeight: FontWeight.bold

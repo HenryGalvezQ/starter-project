@@ -42,7 +42,7 @@ class ArticleWidget extends HookWidget {
         // [SOLUCIÓN]
         // Vertical: 12.0 -> Esto crea la separación negra visible entre tarjetas.
         // Horizontal: 6.0 -> Mantenemos bajo para que no explote el texto (Overflow).
-        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        margin: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
         
         decoration: BoxDecoration(
           color: Colors.white, // Fondo de la tarjeta
@@ -164,7 +164,7 @@ class ArticleWidget extends HookWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   article!.description ?? '',
-                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),

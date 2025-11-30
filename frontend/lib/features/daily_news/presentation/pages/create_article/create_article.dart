@@ -31,6 +31,9 @@ class CreateArticleScreen extends HookWidget {
     // IMAGEN: Prioridad -> 1. Nueva (picker) 2. Local existente (pending) 3. Remota existente
     final localImagePath = useState<String?>(articleToEdit?.localImagePath);
     
+    // [CAMBIO 1] Hook para saber si el usuario eliminó explícitamente la imagen original remota
+    final isRemoteImageRemoved = useState(false);
+    
     final picker = useMemoized(() => ImagePicker());
 
     Future<void> _pickImage(ImageSource source) async {
@@ -38,11 +41,13 @@ class CreateArticleScreen extends HookWidget {
       if (image != null) {
         final directory = await getApplicationDocumentsDirectory();
         final fileName = path.basename(image.path);
-        // Creamos una copia permanente para que no se borre de caché
+        // Creamos una copia permanente
         final permanentPath = '${directory.path}/$fileName';
         await File(image.path).copy(permanentPath);
         
         localImagePath.value = permanentPath;
+        // Si seleccionamos una nueva, reseteamos el flag de eliminado para que se muestre la nueva
+        isRemoteImageRemoved.value = false; 
       }
     }
 
@@ -53,7 +58,6 @@ class CreateArticleScreen extends HookWidget {
           style: TextStyle(color: isDark ? Colors.white : Colors.black)
         ),
         leading: IconButton(
-          // [FIX COLOR] Icono de cerrar dinámico
           icon: Icon(Icons.close, color: isDark ? Colors.white : Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
@@ -71,14 +75,26 @@ class CreateArticleScreen extends HookWidget {
 
               // 2. Generar descripción automática
               String autoDescription = contentController.text;
-              if (autoDescription.length > 100) {
-                autoDescription = "${autoDescription.substring(0, 100)}...";
+              if (autoDescription.length > 90) {
+                autoDescription = "${autoDescription.substring(0, 90)}...";
               }
 
               // 3. Definir IDs y Fechas
-              // Si editamos, MANTENEMOS el ID original (url) y la fecha de publicación original
               final uniqueId = isEditing ? articleToEdit!.url : const Uuid().v4();
               final publishedDate = isEditing ? articleToEdit!.publishedAt : DateTime.now().toIso8601String();
+
+              // [CAMBIO 2] Lógica estricta para determinar la URL remota final
+              String finalUrlToImage = "";
+              if (localImagePath.value != null) {
+                // Hay nueva imagen local -> Borramos url remota para forzar resubida
+                finalUrlToImage = ""; 
+              } else if (isRemoteImageRemoved.value) {
+                // El usuario borró la imagen -> Enviamos vacío
+                finalUrlToImage = "";
+              } else {
+                // Mantenemos la original si existe
+                finalUrlToImage = articleToEdit?.urlToImage ?? "";
+              }
 
               // 4. Construir Entidad
               final article = ArticleEntity(
@@ -89,14 +105,12 @@ class CreateArticleScreen extends HookWidget {
                 category: selectedCategory.value,
                 publishedAt: publishedDate,
                 
-                // Si cambiamos la foto local, borramos la referencia remota para forzar resubida
-                urlToImage: localImagePath.value != null ? "" : (articleToEdit?.urlToImage ?? ""), 
+                urlToImage: finalUrlToImage,
                 localImagePath: localImagePath.value,
                 
-                // CRÍTICO: Siempre 'pending' al guardar para que el SyncWorker lo procese
+                // CRÍTICO: Siempre 'pending' al guardar
                 syncStatus: 'pending', 
                 
-                // Datos de usuario (se rellenan seguros en el repo, pero pasamos lo que tenemos)
                 author: articleToEdit?.author ?? "", 
                 userId: articleToEdit?.userId,
                 likesCount: articleToEdit?.likesCount ?? 0,
@@ -126,29 +140,60 @@ class CreateArticleScreen extends HookWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // AREA DE IMAGEN
-              GestureDetector(
-                onTap: () {
-                  showModalBottomSheet(context: context, builder: (ctx) {
-                    return SafeArea(
-                      child: Wrap(
-                        children: [
-                          ListTile(leading: const Icon(Icons.photo_camera), title: const Text("Cámara"), onTap: () { _pickImage(ImageSource.camera); Navigator.pop(ctx); }),
-                          ListTile(leading: const Icon(Icons.photo_library), title: const Text("Galería"), onTap: () { _pickImage(ImageSource.gallery); Navigator.pop(ctx); }),
-                        ],
+              // [CAMBIO 3] AREA DE IMAGEN CON STACK Y BOTÓN DE BORRAR
+              Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      showModalBottomSheet(context: context, builder: (ctx) {
+                        return SafeArea(
+                          child: Wrap(
+                            children: [
+                              ListTile(leading: const Icon(Icons.photo_camera), title: const Text("Cámara"), onTap: () { _pickImage(ImageSource.camera); Navigator.pop(ctx); }),
+                              ListTile(leading: const Icon(Icons.photo_library), title: const Text("Galería"), onTap: () { _pickImage(ImageSource.gallery); Navigator.pop(ctx); }),
+                            ],
+                          ),
+                        );
+                      });
+                    },
+                    child: Container(
+                      height: 200,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    );
-                  });
-                },
-                child: Container(
-                  height: 200,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
+                      // Pasamos logicamente si debemos mostrar la remota o no
+                      child: _buildImageContent(
+                        localImagePath.value, 
+                        isRemoteImageRemoved.value ? null : articleToEdit?.urlToImage
+                      ),
+                    ),
                   ),
-                  child: _buildImageContent(localImagePath.value, articleToEdit?.urlToImage),
-                ),
+
+                  // BOTÓN X (Solo aparece si hay alguna imagen visible)
+                  if (localImagePath.value != null || (!isRemoteImageRemoved.value && articleToEdit?.urlToImage != null && articleToEdit!.urlToImage!.isNotEmpty))
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () {
+                          // Acción de borrar: Limpiamos local y marcamos remoto como eliminado
+                          localImagePath.value = null;
+                          isRemoteImageRemoved.value = true;
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)]
+                          ),
+                          child: const Icon(Icons.close, color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ),
+                ],
               ),
 
               const SizedBox(height: 20),
@@ -182,6 +227,7 @@ class CreateArticleScreen extends HookWidget {
                 decoration: const InputDecoration(hintText: "Título del titular", border: InputBorder.none),
                 maxLines: 2,
               ),
+              
               const Divider(),
 
               // INPUT CONTENIDO
@@ -191,6 +237,7 @@ class CreateArticleScreen extends HookWidget {
                 decoration: const InputDecoration(hintText: "Escribe tu reporte aquí...", border: InputBorder.none),
                 maxLines: null,
               ),
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -199,14 +246,12 @@ class CreateArticleScreen extends HookWidget {
   }
 
   Widget _buildImageContent(String? localPath, String? remoteUrl) {
-    // 1. Si hay una nueva imagen seleccionada (o pendiente local), mostramos esa
     if (localPath != null && localPath.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.file(File(localPath), fit: BoxFit.cover),
       );
     } 
-    // 2. Si no, si hay una URL remota (edición de artículo sincronizado), mostramos esa
     else if (remoteUrl != null && remoteUrl.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
@@ -218,7 +263,6 @@ class CreateArticleScreen extends HookWidget {
         ),
       );
     }
-    // 3. Placeholder por defecto
     return const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Portada", style: TextStyle(color: Colors.grey))],
