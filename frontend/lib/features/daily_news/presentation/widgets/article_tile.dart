@@ -164,6 +164,7 @@ class ArticleWidget extends HookWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   article!.description ?? '',
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
