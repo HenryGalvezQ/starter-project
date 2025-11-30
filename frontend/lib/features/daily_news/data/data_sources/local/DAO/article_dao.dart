@@ -5,52 +5,46 @@ import 'package:news_app_clean_architecture/features/daily_news/data/models/arti
 abstract class ArticleDao {
   
   // --- ESCRITURA (Insert/Delete) ---
-  
   @Insert(onConflict: OnConflictStrategy.replace)
   Future<void> insertArticle(ArticleModel article);
-  
+
   @delete
   Future<void> deleteArticle(ArticleModel articleModel);
 
   // --- LECTURA GENERAL ---
-
-  // Obtener TODOS los artículos (Solo para debug o limpieza)
   @Query('SELECT * FROM article')
   Future<List<ArticleModel>> getAllArticles();
 
-  // Buscar por URL (Validación de existencia)
   @Query('SELECT * FROM article WHERE url = :url')
   Future<ArticleModel?> findArticleByUrl(String url);
 
-  // --- LECTURA FILTRADA POR USUARIO (Data Isolation) ---
-
-  // MODIFICADO: Excluimos los que están marcados para borrar ('pending_delete')
-  // para que la UI no los muestre aunque sigan en la DB esperando sync.
+  // --- LECTURA FILTRADA POR USUARIO (My Reports) ---
+  // ESTE SÍ NECESITA USERID (Solo quiero ver lo que YO escribí)
   @Query("SELECT * FROM article WHERE userId = :userId AND syncStatus != 'pending_delete' ORDER BY publishedAt DESC")
   Future<List<ArticleModel>> getArticlesByUser(String userId);
 
-  // MODIFICADO: Ahora traemos 'pending' (para subir/editar) Y 'pending_delete' (para borrar)
   @Query("SELECT * FROM article WHERE (syncStatus = 'pending' OR syncStatus = 'pending_delete') AND userId = :userId")
   Future<List<ArticleModel>> getPendingArticlesByUser(String userId);
 
-  @Query("SELECT * FROM article WHERE isSaved = 1 AND userId = :userId")
-  Future<List<ArticleModel>> getSavedArticlesByUser(String userId);
+  // --- CORRECCIÓN AQUÍ (SAVED) ---
+  // Quitamos el parámetro userId y la condición WHERE userId.
+  // "Dame todo lo que marqué como guardado, sin importar quién lo escribió".
+  @Query("SELECT * FROM article WHERE isSaved = 1")
+  Future<List<ArticleModel>> getSavedArticles(); 
 
   // --- MANTENIMIENTO ---
-
-  // Actualizar estado de sincronización
   @Query("UPDATE article SET syncStatus = :status WHERE url = :url")
   Future<void> updateSyncStatus(String url, String status);
 
-  // Limpieza total (Seguridad extra al cerrar sesión)
   @Query('DELETE FROM article')
   Future<void> deleteAllArticles();
 
-  // [NUEVO] Obtener solo los likes de ESTE usuario
-  @Query("SELECT * FROM article WHERE isLiked = 1 AND userId = :userId")
-  Future<List<ArticleModel>> getLikedArticlesByUser(String userId);
-  // [NUEVO FASE 10] Buscador Full-Text (parcial)
-  // Usamos los operadores || para concatenar los % y hacer un LIKE flexible
+  // --- CORRECCIÓN AQUÍ (LIKED) ---
+  // Igual aquí: "Dame todo lo que marqué con like".
+  @Query("SELECT * FROM article WHERE isLiked = 1")
+  Future<List<ArticleModel>> getLikedArticles();
+
+  // [Buscador]
   @Query("SELECT * FROM article WHERE (title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') AND syncStatus != 'pending_delete' ORDER BY publishedAt DESC")
   Future<List<ArticleModel>> searchArticles(String query);
 }

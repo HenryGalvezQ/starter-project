@@ -235,9 +235,8 @@ class _$ArticleDao extends ArticleDao {
   }
 
   @override
-  Future<List<ArticleModel>> getSavedArticlesByUser(String userId) async {
-    return _queryAdapter.queryList(
-        'SELECT * FROM article WHERE isSaved = 1 AND userId = ?1',
+  Future<List<ArticleModel>> getSavedArticles() async {
+    return _queryAdapter.queryList('SELECT * FROM article WHERE isSaved = 1',
         mapper: (Map<String, Object?> row) => ArticleModel(
             id: row['id'] as int?,
             userId: row['userId'] as String?,
@@ -255,8 +254,7 @@ class _$ArticleDao extends ArticleDao {
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
             isLiked:
                 row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
-            category: row['category'] as String?),
-        arguments: [userId]);
+            category: row['category'] as String?));
   }
 
   @override
@@ -275,9 +273,8 @@ class _$ArticleDao extends ArticleDao {
   }
 
   @override
-  Future<List<ArticleModel>> getLikedArticlesByUser(String userId) async {
-    return _queryAdapter.queryList(
-        'SELECT * FROM article WHERE isLiked = 1 AND userId = ?1',
+  Future<List<ArticleModel>> getLikedArticles() async {
+    return _queryAdapter.queryList('SELECT * FROM article WHERE isLiked = 1',
         mapper: (Map<String, Object?> row) => ArticleModel(
             id: row['id'] as int?,
             userId: row['userId'] as String?,
@@ -295,8 +292,7 @@ class _$ArticleDao extends ArticleDao {
                 row['isSaved'] == null ? null : (row['isSaved'] as int) != 0,
             isLiked:
                 row['isLiked'] == null ? null : (row['isLiked'] as int) != 0,
-            category: row['category'] as String?),
-        arguments: [userId]);
+            category: row['category'] as String?));
   }
 
   @override

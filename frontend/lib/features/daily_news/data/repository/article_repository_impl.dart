@@ -17,7 +17,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
   final FirebaseAuth _auth;
   final FirebaseStorage _storage;
 
-  // [NUEVO] Semáforo para evitar doble ejecución (Race Condition)
+  // Semáforo para evitar doble ejecución (Race Condition)
   bool _isSyncing = false;
 
   ArticleRepositoryImpl(
@@ -29,7 +29,6 @@ class ArticleRepositoryImpl implements ArticleRepository {
   );
 
   // --- MÉTODOS PÚBLICOS (Feed Global) ---
-  // Este no filtra por usuario porque es público para todos
   @override
   Future<DataState<List<ArticleModel>>> getNewsArticles() async {
     try {
@@ -59,24 +58,29 @@ class ArticleRepositoryImpl implements ArticleRepository {
   @override
   Future<List<ArticleModel>> getSavedArticles() async {
     final user = _auth.currentUser;
-    if (user == null) return []; // Si no hay usuario, no hay favoritos
-
-    // DATA ISOLATION: Solo traemos los favoritos de ESTE usuario
-    return _appDatabase.articleDAO.getSavedArticlesByUser(user.uid);
+    if (user == null) return [];
+    // Nota: El DAO debe estar actualizado para filtrar solo por isSaved=1
+    // CORRECCIÓN: Ya no pasamos user.uid
+    // Ahora devuelve cualquier artículo guardado en la DB local actual.
+    return _appDatabase.articleDAO.getSavedArticles();
   }
 
-@override
+  @override
   Future<void> saveArticle(ArticleEntity article) async {
     final user = _auth.currentUser;
     
-    // 1. LOCAL: Guardamos en Floor (Siempre funciona, con o sin internet)
+    // [CORRECCIÓN] Respetamos el userId original (Autor) si existe.
+    // Solo usamos user.uid si el artículo no tiene dueño (ej: creado localmente ahora mismo).
+    final String ownerId = article.userId ?? user?.uid ?? "";
+
+    // 1. LOCAL: Guardamos en Floor
     final model = ArticleModel(
-      userId: user?.uid,
+      userId: ownerId, // <--- CORREGIDO: Usamos el ID del autor original
       id: article.id,
       author: article.author,
       title: article.title,
       description: article.description,
-      url: article.url, // Usamos esto como ID único
+      url: article.url, 
       urlToImage: article.urlToImage,
       publishedAt: article.publishedAt,
       content: article.content,
@@ -86,40 +90,25 @@ class ArticleRepositoryImpl implements ArticleRepository {
       isSaved: true,
       category: article.category ?? 'General',
     );
-    
     await _appDatabase.articleDAO.insertArticle(model);
 
     // 2. CLOUD: Si estamos logueados, guardamos la referencia en Firestore
     if (user != null && article.url != null) {
       try {
-        // Usamos encodeURIComponent o hash si la URL tiene caracteres raros, 
-        // pero por simplicidad usaremos la URL tal cual como ID del documento si es segura,
-        // o mejor, dejamos que Firestore genere el ID y guardamos la URL como campo.
-        // ESTRATEGIA: Usar la URL como ID del documento requiere que sea válida para rutas.
-        // Para evitar errores de caracteres invalidos en rutas URL, usaremos un hash o ID limpio.
-        // Pero como tus URLs generadas son "symmetry://...", son seguras excepto por los slashes.
-        // MEJOR OPCIÓN: Guardar el documento usando un ID generado o limpiado.
-        // Para este MVP, guardaremos un documento con el campo 'articleUrl'.
-        
-        // Referencia: users/{uid}/saved_articles/{article_url_safe}
-        // Truco: Reemplazamos / por _ para usarlo como ID de documento
         final safeId = article.url!.replaceAll('/', '_').replaceAll(':', '_');
-
         await _firestore
             .collection('users')
             .doc(user.uid)
             .collection('saved_articles')
-            .doc(safeId) // ID del documento = URL "sanitizada"
+            .doc(safeId) 
             .set({
               'articleUrl': article.url,
               'savedAt': FieldValue.serverTimestamp(),
-              'title': article.title, // Guardamos título para referencia rápida en consola
+              'title': article.title, 
             });
-            
         print("☁️ CLOUD: Artículo guardado en perfil de usuario.");
       } catch (e) {
         print("⚠️ CLOUD SAVE ERROR: $e (Pero se guardó localmente)");
-        // No lanzamos excepción para no romper la UX local
       }
     }
   }
@@ -127,22 +116,21 @@ class ArticleRepositoryImpl implements ArticleRepository {
   @override
   Future<void> removeArticle(ArticleEntity article) async {
     final user = _auth.currentUser;
-
+    
     // 1. LOCAL
+    // Al borrar, usamos el modelo tal cual viene para que Floor lo encuentre por ID (url)
     await _appDatabase.articleDAO.deleteArticle(ArticleModel.fromEntity(article));
 
     // 2. CLOUD
     if (user != null && article.url != null) {
       try {
         final safeId = article.url!.replaceAll('/', '_').replaceAll(':', '_');
-        
         await _firestore
             .collection('users')
             .doc(user.uid)
             .collection('saved_articles')
             .doc(safeId)
             .delete();
-            
         print("☁️ CLOUD: Artículo eliminado del perfil.");
       } catch (e) {
         print("⚠️ CLOUD REMOVE ERROR: $e");
@@ -150,7 +138,7 @@ class ArticleRepositoryImpl implements ArticleRepository {
     }
   }
 
-  // --- MÉTODOS OFFLINE-FIRST ---
+  // --- MÉTODOS OFFLINE-FIRST (My Reports) ---
 
   @override
   Future<List<ArticleEntity>> getMyArticles() async {
@@ -158,16 +146,9 @@ class ArticleRepositoryImpl implements ArticleRepository {
     if (user == null) return [];
 
     try {
-      // ESTRICTO OFFLINE-FIRST:
-      // Leemos SOLO de local. ¿Por qué?
-      // 1. Velocidad instantánea.
-      // 2. Consistencia: Si borramos un item offline ('pending_delete'), Floor lo oculta.
-      //    Si leyéramos de la nube (remote), el item "reviviría" porque aún no se ha borrado en Firestore.
-      // 3. El SyncWorker se encarga en segundo plano de traer novedades y actualizar Floor.
-      
+      // ESTRICTO OFFLINE-FIRST: Leemos SOLO de local filtrando por userId.
       final localArticles = await _appDatabase.articleDAO.getArticlesByUser(user.uid);
       return localArticles;
-
     } catch (e) {
       print("ERROR GETTING ARTICLES: $e");
       return [];
@@ -177,14 +158,13 @@ class ArticleRepositoryImpl implements ArticleRepository {
   @override
   Future<void> createLocalArticle(ArticleEntity article) {
     final user = _auth.currentUser;
-    // Si displayName es null, usamos el email, o un default
     final String authorName = user?.displayName != null && user!.displayName!.isNotEmpty 
         ? user.displayName! 
         : (user?.email?.split('@')[0] ?? "Symmetry Reporter");
 
-    // DATA ISOLATION: El reporte nace firmado por el autor
+    // DATA ISOLATION: El reporte nace firmado por el autor (usuario actual)
     final model = ArticleModel(
-      userId: user?.uid, // <--- CRÍTICO
+      userId: user?.uid, 
       url: article.url, 
       author: authorName,
       category: article.category ?? 'General',
@@ -198,30 +178,24 @@ class ArticleRepositoryImpl implements ArticleRepository {
       isSaved: false, 
       likesCount: 0,
     );
-
     return _appDatabase.articleDAO.insertArticle(model);
   }
 
-  // --- NUEVO: UPDATE (Offline First) ---
   @override
   Future<void> updateLocalArticle(ArticleEntity article) {
     final user = _auth.currentUser;
-    
     // Al editar, lo ponemos en 'pending' para que el SyncWorker lo suba (Upsert)
-    // Mantenemos el mismo URL (ID) para sobrescribir.
+    // Mantenemos el mismo URL (ID) y el mismo userId.
     final model = ArticleModel.fromEntity(article).copyWith(
       userId: user?.uid,
       syncStatus: 'pending', 
     );
-    
-    return _appDatabase.articleDAO.insertArticle(model); // Insert con Replace
+    return _appDatabase.articleDAO.insertArticle(model); 
   }
 
-  // --- NUEVO: DELETE (Offline First - Soft Delete) ---
   @override
   Future<void> deleteLocalArticle(ArticleEntity article) async {
-    // No borramos físicamente. Marcamos como 'pending_delete'.
-    // El DAO de lectura filtrará esto para que desaparezca de la UI inmediatamente.
+    // Soft Delete: Marcamos como 'pending_delete'.
     await _appDatabase.articleDAO.updateSyncStatus(article.url!, 'pending_delete');
   }
 
@@ -231,30 +205,26 @@ class ArticleRepositoryImpl implements ArticleRepository {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // 1. [CRÍTICO] Verificar si ya hay una sincronización en curso
+    // 1. Verificar si ya hay una sincronización en curso
     if (_isSyncing) {
       print("⏳ SYNC: Sincronización en curso. Ignorando llamada duplicada.");
       return;
     }
 
-    // 2. Bloquear el semáforo
     _isSyncing = true;
-
     try {
       // ---------------------------------------------------------
-      // PASO 1: PUSH (SUBIDA) - Enviar cambios locales a la nube
+      // PASO 1: PUSH (SUBIDA)
       // ---------------------------------------------------------
       final pendingArticles = await _appDatabase.articleDAO.getPendingArticlesByUser(user.uid);
-
+      
       if (pendingArticles.isNotEmpty) {
         print("SYNC PUSH: Procesando ${pendingArticles.length} cambios locales...");
-        
         for (final article in pendingArticles) {
           try {
             // --- LÓGICA DE BORRADO ---
             if (article.syncStatus == 'pending_delete') {
               print("SYNC: Borrando ${article.title} de la nube...");
-              
               // Borrar imagen
               if (article.urlToImage != null && article.urlToImage!.contains('firebase')) {
                 try {
@@ -268,15 +238,12 @@ class ArticleRepositoryImpl implements ArticleRepository {
                 await doc.reference.delete();
               }
               
-              // Borrar local
+              // Borrar local físicamente
               await _appDatabase.articleDAO.deleteArticle(article);
               continue;
             }
 
             // --- LÓGICA DE CREACIÓN / EDICIÓN ---
-            
-            // [FIX ADICIONAL] Doble check: Verificar si ya existe en Firestore ANTES de subir imagen
-            // Esto ayuda si el semáforo fallara por alguna razón extrema (reinicio de app a mitad de proceso)
             final qCheck = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
             
             String imageUrl = article.urlToImage ?? "";
@@ -285,12 +252,9 @@ class ArticleRepositoryImpl implements ArticleRepository {
             if (article.localImagePath != null && article.localImagePath!.isNotEmpty) {
               final file = File(article.localImagePath!);
               if (await file.exists()) {
-                // Si ya existe el doc remoto y tiene imagen, tratamos de no duplicar basura en Storage,
-                // pero por simplicidad subimos la nueva versión.
                 final storageRef = _storage
                     .ref()
                     .child('media/articles/${user.uid}/${DateTime.now().millisecondsSinceEpoch}.jpg');
-                
                 await storageRef.putFile(
                   file,
                   SettableMetadata(contentType: 'image/jpeg', customMetadata: {'uploaded_by': user.uid}),
@@ -335,9 +299,8 @@ class ArticleRepositoryImpl implements ArticleRepository {
       }
 
       // ---------------------------------------------------------
-      // PASO 2: PULL (BAJADA) - Traer artículos de la nube al local
+      // PASO 2: PULL (BAJADA) - Solo mis artículos
       // ---------------------------------------------------------
-      // ... (El código de PULL se mantiene exactamente igual) ...
       print("SYNC PULL: Buscando artículos remotos para rehidratar local...");
       try {
         final remoteSnapshot = await _firestore
@@ -372,7 +335,6 @@ class ArticleRepositoryImpl implements ArticleRepository {
       }
 
     } finally {
-      // 3. [CRÍTICO] Liberar el semáforo SIEMPRE, haya error o no.
       _isSyncing = false;
       print("🏁 SYNC: Proceso finalizado. Semáforo libre.");
     }
@@ -396,7 +358,6 @@ class ArticleRepositoryImpl implements ArticleRepository {
           .doc(user.uid)
           .collection('saved_articles')
           .get();
-
       if (savedSnapshot.docs.isEmpty) return;
 
       for (final doc in savedSnapshot.docs) {
@@ -405,16 +366,14 @@ class ArticleRepositoryImpl implements ArticleRepository {
 
         // A. Verificar si ya lo tenemos en local
         final localArticle = await _appDatabase.articleDAO.findArticleByUrl(articleUrl);
-        
-        // PRESERVAMOS EL LIKE SI YA EXISTE
-        final bool preserveLiked = localArticle?.isLiked ?? false; // [NUEVO]
+        final bool preserveLiked = localArticle?.isLiked ?? false; 
         final int currentLikes = localArticle?.likesCount ?? 0;
 
         if (localArticle != null) {
-          // Si existe, actualizamos isSaved=true manteniendo isLiked
+          // Si existe, actualizamos isSaved=true manteniendo isLiked y el AUTOR ORIGINAL
           if (localArticle.isSaved != true) {
              final updated = ArticleModel(
-                userId: user.uid, 
+                userId: localArticle.userId, // <--- CORREGIDO: Respetar autor original
                 id: localArticle.id,
                 author: localArticle.author,
                 title: localArticle.title,
@@ -423,14 +382,12 @@ class ArticleRepositoryImpl implements ArticleRepository {
                 urlToImage: localArticle.urlToImage,
                 publishedAt: localArticle.publishedAt,
                 content: localArticle.content,
-                
-                likesCount: currentLikes, // Mantenemos contador
+                likesCount: currentLikes, 
                 syncStatus: localArticle.syncStatus,
                 localImagePath: localArticle.localImagePath,
                 category: localArticle.category,
-                
-                isSaved: true,     // <--- ACTIVAMOS
-                isLiked: preserveLiked // <--- PRESERVAMOS [CRÍTICO]
+                isSaved: true,     
+                isLiked: preserveLiked 
              );
              await _appDatabase.articleDAO.insertArticle(updated);
           }
@@ -447,8 +404,10 @@ class ArticleRepositoryImpl implements ArticleRepository {
             articleData['syncStatus'] = 'synced';
             
             var newModel = ArticleModel.fromJson(articleData);
+            
+            // Reconstruimos asegurando flags locales y AUTOR ORIGINAL
             newModel = ArticleModel(
-                userId: user.uid, 
+                userId: newModel.userId, // <--- CORREGIDO: Usar ID del JSON remoto
                 url: newModel.url,
                 author: newModel.author,
                 title: newModel.title,
@@ -459,9 +418,8 @@ class ArticleRepositoryImpl implements ArticleRepository {
                 likesCount: newModel.likesCount,
                 category: newModel.category,
                 syncStatus: 'synced',
-                
-                isSaved: true,  // <--- ACTIVAMOS
-                isLiked: false, // Por defecto false, SyncLiked lo arreglará si es necesario
+                isSaved: true,  
+                isLiked: false, 
             );
             await _appDatabase.articleDAO.insertArticle(newModel);
           }
@@ -484,29 +442,26 @@ class ArticleRepositoryImpl implements ArticleRepository {
           .doc(user.uid)
           .collection('liked_articles')
           .get();
-
       if (likedSnapshot.docs.isEmpty) return;
 
       for (final doc in likedSnapshot.docs) {
         final articleId = doc.id;
-
         // 1. Descargar info remota
         final remoteArticleSnap = await _firestore.collection('articles').doc(articleId).get();
         if (!remoteArticleSnap.exists) continue;
-
+        
         final articleData = remoteArticleSnap.data()!;
         articleData['syncStatus'] = 'synced';
         var model = ArticleModel.fromJson(articleData);
 
-        // 2. [CORRECCIÓN CRÍTICA] VERIFICAR ESTADO LOCAL PREVIO
-        // Antes de sobrescribir, miramos si SyncSaved ya pasó por aquí
+        // 2. VERIFICAR ESTADO LOCAL PREVIO
         final existingLocal = await _appDatabase.articleDAO.findArticleByUrl(model.url!);
-        final bool preserveSaved = existingLocal?.isSaved ?? false; // Recuperamos estado Saved
+        final bool preserveSaved = existingLocal?.isSaved ?? false; 
         final String? existingLocalPath = existingLocal?.localImagePath;
 
         // 3. FUSIONAR ESTADO
         model = ArticleModel(
-            userId: user.uid,
+            userId: model.userId, // <--- CORREGIDO: Mantenemos el Autor original
             url: model.url,
             author: model.author,
             title: model.title,
@@ -517,12 +472,10 @@ class ArticleRepositoryImpl implements ArticleRepository {
             likesCount: model.likesCount,
             category: model.category,
             syncStatus: 'synced',
-            localImagePath: existingLocalPath, // Preservamos imagen local si hay
-            
-            isSaved: preserveSaved, // <--- AQUÍ ESTÁ EL FIX (Usamos el valor preservado)
-            isLiked: true           // <--- ACTIVAMOS
+            localImagePath: existingLocalPath, 
+            isSaved: preserveSaved, 
+            isLiked: true           
         );
-
         await _appDatabase.articleDAO.insertArticle(model);
       }
       print("SYNC: Likes sincronizados correctamente.");
@@ -535,9 +488,9 @@ class ArticleRepositoryImpl implements ArticleRepository {
   Future<List<ArticleEntity>> getLikedArticles() async {
     final user = _auth.currentUser;
     if (user == null) return [];
-    return _appDatabase.articleDAO.getLikedArticlesByUser(user.uid);
+    // Nota: El DAO debe estar actualizado para filtrar solo por isLiked=1
+    return _appDatabase.articleDAO.getLikedArticles();
   }
-
 
   // --- CORRECCIÓN DE LA TRANSACCIÓN (Anti-Duplicados) ---
   @override
@@ -545,10 +498,12 @@ class ArticleRepositoryImpl implements ArticleRepository {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // 1. Local (Optimista) - IGUAL QUE ANTES
+    // [CORRECCIÓN] Mantenemos el autor original (article.userId) y no sobrescribimos con user.uid
+    final String ownerId = article.userId ?? user.uid;
+
+    // 1. Local (Optimista)
     final localModel = ArticleModel(
-        // ... copia tus campos ...
-        userId: user.uid,
+        userId: ownerId, // <--- CORREGIDO
         id: article.id,
         author: article.author,
         title: article.title,
@@ -557,7 +512,6 @@ class ArticleRepositoryImpl implements ArticleRepository {
         urlToImage: article.urlToImage,
         publishedAt: article.publishedAt,
         content: article.content,
-        // UI Optimista
         likesCount: (article.likesCount ?? 0) + (isLiked ? 1 : -1),
         syncStatus: 'synced',
         localImagePath: article.localImagePath,
@@ -569,64 +523,55 @@ class ArticleRepositoryImpl implements ArticleRepository {
 
     // 2. TRANSACCIÓN BLINDADA
     try {
-       // Buscar referencia por URL si id no es confiable, o usar id si lo es.
-       // Asumimos búsqueda por URL para consistencia
        QuerySnapshot snapshot = await _firestore.collection('articles').where('url', isEqualTo: article.url).get();
        if (snapshot.docs.isEmpty) return;
        
        final docRef = snapshot.docs.first.reference;
        // Referencia al registro de like del usuario
        final userLikeRef = _firestore.collection('users').doc(user.uid).collection('liked_articles').doc(snapshot.docs.first.id);
-
+       
        await _firestore.runTransaction((transaction) async {
         final articleSnapshot = await transaction.get(docRef);
-        final userLikeSnapshot = await transaction.get(userLikeRef); // LEEMOS SI YA EXISTE
+        final userLikeSnapshot = await transaction.get(userLikeRef);
 
         if (!articleSnapshot.exists) return;
 
         int currentLikes = articleSnapshot.data() is Map 
             ? (articleSnapshot.get('likesCount') ?? 0) : 0;
 
-        // LÓGICA DE PROTECCIÓN:
-        // Solo sumamos si la UI dice "Like" Y no existe registro en base de datos.
-        // Esto previene que si la UI está desincronizada (botón gris) pero la DB dice que ya diste like, sumes doble.
-        
+        // LÓGICA DE PROTECCIÓN
         if (isLiked && !userLikeSnapshot.exists) {
-           // Caso Real: Usuario da Like y no lo tenía
            transaction.update(docRef, {'likesCount': currentLikes + 1});
            transaction.set(userLikeRef, {'likedAt': FieldValue.serverTimestamp()});
         } 
         else if (!isLiked && userLikeSnapshot.exists) {
-           // Caso Real: Usuario quita Like y sí lo tenía
            int newCount = currentLikes > 0 ? currentLikes - 1 : 0;
            transaction.update(docRef, {'likesCount': newCount});
            transaction.delete(userLikeRef);
         }
-        // Si (isLiked && userLikeSnapshot.exists) -> La UI estaba mal (gris), pero ya tenía like. NO HACEMOS NADA en el contador remoto, pero la UI local ya se arregló en el paso 1.
       });
-
     } catch (e) {
       print("TRANSACTION ERROR: $e");
     }
   }
 
-    @override
+  @override
   Future<List<ArticleEntity>> searchLocalArticles(String query) async {
     return _appDatabase.articleDAO.searchArticles(query);
   }
 }
 
-// Extensión para copyWith (Ayuda a copiar objetos inmutables)
+// Extensión para copyWith
 extension ArticleModelCopyWith on ArticleModel {
   ArticleModel copyWith({
-    int? id, // <--- AÑADIDO: El parámetro que faltaba
+    int? id, 
     String? userId, String? author, String? title, String? description,
     String? url, String? urlToImage, String? publishedAt, String? content,
     int? likesCount, String? syncStatus, String? localImagePath,
     bool? isSaved, bool? isLiked, String? category
   }) {
     return ArticleModel(
-      id: id ?? this.id, // <--- CORREGIDO: Usa el argumento o el actual
+      id: id ?? this.id,
       userId: userId ?? this.userId,
       author: author ?? this.author,
       title: title ?? this.title,
@@ -643,6 +588,4 @@ extension ArticleModelCopyWith on ArticleModel {
       category: category ?? this.category,
     );
   }
-
-  
 }
