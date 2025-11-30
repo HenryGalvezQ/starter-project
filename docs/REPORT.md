@@ -8,9 +8,9 @@
 
 ## 1. Introduction
 
-When I received the Symmetry challenge, I recognized immediately that this was not a standard "coding test." It was a request for engineering excellence. As a Systems Engineering student ranked in the top tier of my class (*Quinto Superior*) and a finalist in national cybersecurity and innovation tournaments, I thrive on challenges that require merging scalable architecture with intuitive user experiences.
+When I received the Symmetry challenge, I recognized immediately that this was not a standard "coding test." It was a request for engineering excellence. As a Systems Engineering student ranked in the top tier of my class and a finalist in national cybersecurity and innovation tournaments, I thrive on challenges that require merging scalable architecture with intuitive user experiences.
 
-My approach was to treat this project as a Minimum Viable Product (MVP) for a real-world production environment. I leveraged my background in UX/UI (Certified by Coderhouse) to ensure the interface was not only functional but polished, while my engineering background drove the robust, "Offline-First" architecture that lies beneath the surface.
+My approach was to treat this project as a Minimum Viable Product (MVP) for a real-world production environment. I leveraged my background in UX/UI (Certified by Coderhouse) to ensure the interface was not only functional but polished, while my engineering background drove the robust, **"Offline-First" architecture** that lies beneath the surface.
 
 This report documents the journey of building a system designed to work seamlessly, regardless of internet connectivity, fulfilling the "Maximally Overdeliver" core value.
 
@@ -28,22 +28,22 @@ While I possess experience with Flutter and Clean Architecture, this project pus
 
 ## 3. Challenges Faced
 
-The requirement to build a robust "Offline-First" app introduced significant engineering challenges.
+The requirement to build a robust "Offline-First" app introduced significant engineering challenges that went beyond simple CRUD operations.
 
 ### 3.1. The "Race Condition" in Synchronization
-**Challenge:** When a user opens the app, the system tries to download updates from the cloud (Pull). Simultaneously, if the user modifies data locally (Push), a race condition occurs where local changes could be overwritten by stale remote data.
+**Challenge:** When a user opens the app, the system tries to download updates from the cloud (Pull). Simultaneously, if the user modifies data locally (Push), a race condition occurs where local changes could be overwritten by stale remote data or duplicate entries could be created.
 **Solution:** I implemented a **Mutex Lock (Semaphore)** pattern in the `ArticleRepositoryImpl`. A boolean flag `_isSyncing` prevents overlapping sync processes. Furthermore, I implemented a "State Merging" strategy: before inserting remote data, the repository checks the local database to preserve user-generated states like `isSaved` or `isLiked` that haven't synced yet.
 
 ### 3.2. Soft Deletes in an Offline Environment
-**Challenge:** If a user deletes an article while offline, we cannot simply remove the row from the local database, or the next sync would re-download it from the cloud.
+**Challenge:** If a user deletes an article while offline, we cannot simply remove the row from the local database, or the next sync would re-download it from the cloud (since it still exists there).
 **Solution:** I implemented a **Soft Delete** mechanism.
 1.  **Local:** The item is marked with `syncStatus = 'pending_delete'`.
-2.  **DAO Filter:** The `ArticleDao` filters these items out of UI queries, making the deletion appear instant to the user.
+2.  **DAO Filter:** The `ArticleDao` filters these items out of UI queries immediately, making the deletion appear instant to the user.
 3.  **SyncWorker:** When connectivity is restored, the worker detects this flag, deletes the resource in Firebase (Storage + Firestore), and finally wipes the local record.
 
 ### 3.3. Handling Hybrid Image Rendering
-**Challenge:** The app needs to display images from the Internet (CachedNetworkImage) for feed items, but File images for locally created reports that haven't been uploaded yet.
-**Solution:** I refactored the `ArticleWidget` and `ArticleDetail` to support **Hybrid Rendering**. The widget checks for a `localImagePath`. If it exists and the file is valid, it renders the local asset; otherwise, it falls back to the remote URL with caching.
+**Challenge:** The app needs to display images from the Internet (`CachedNetworkImage`) for feed items, but `File` images for locally created reports that haven't been uploaded yet.
+**Solution:** I refactored the `ArticleWidget` and `ArticleDetail` to support **Hybrid Rendering**. The widget prioritizes `localImagePath`. If it exists and the file is valid, it renders the local asset; otherwise, it falls back to the remote URL with caching.
 
 ---
 
@@ -52,7 +52,7 @@ The requirement to build a robust "Offline-First" app introduced significant eng
 This project confirmed my belief that a great UI is nothing without a solid architecture. The "Offline-First" approach transforms the user experience, making the app feel incredibly fast and reliable.
 
 **Future Improvements:**
-* **Unit Testing:** Due to the strict time constraints and the prioritization of complex feature delivery (Sync Engine, Dark Mode), Unit Tests (Task 12.1) were omitted. In a production environment, I would add tests for the `UseCases` and `BLoCs` using `mockito` and `bloc_test`.
+* **Unit Testing:** Due to the strict time constraints and the strategic prioritization of complex feature delivery (Sync Engine, Dark Mode), Unit Tests (Task 12.1) were omitted. In a production environment, I would add tests for the `UseCases` and `BLoCs` using `mockito` and `bloc_test` to ensure regression safety.
 * **CI/CD:** Implementing GitHub Actions to automate the build and deployment process to Firebase App Distribution.
 
 ---
@@ -60,16 +60,19 @@ This project confirmed my belief that a great UI is nothing without a solid arch
 ## 5. Proof of Project
 
 ### 5.1. Video Demonstration
-> *[Insert Video Link or File Here - Demonstrating Offline Creation, Auto-Sync when internet returns, and Dark Mode]*
+> *[Insert Video Link Here - Demonstrating Offline Creation, Auto-Sync when internet returns, and Dark Mode]*
 
 ### 5.2. Screenshots
-| Feed (Light Mode) | Feed (Dark Mode) | Offline Sync Indicators |
-|:---:|:---:|:---:|
-| *[Insert Screenshot]* | *[Insert Screenshot]* | *[Insert Screenshot]* |
 
-| Article Detail | Create Report | Profile & Settings |
+| **Feed (Light Mode)** | **Feed (Dark Mode)** | **Offline Sync Indicators** |
 |:---:|:---:|:---:|
-| *[Insert Screenshot]* | *[Insert Screenshot]* | *[Insert Screenshot]* |
+| *[Insert Screenshot 1]* | *[Insert Screenshot 2]* | *[Insert Screenshot 3]* |
+| *Clean UI with Shimmer* | *OLED Black Background* | *Orange Clock vs Green Check* |
+
+| **Article Detail** | **Create Report** | **Profile & Settings** |
+|:---:|:---:|:---:|
+| *[Insert Screenshot 4]* | *[Insert Screenshot 5]* | *[Insert Screenshot 6]* |
+| *Hybrid Image Rendering* | *Form with Validation* | *Theme Switcher* |
 
 ---
 
