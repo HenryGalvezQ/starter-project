@@ -27,13 +27,10 @@ import 'package:news_app_clean_architecture/features/auth/presentation/pages/pro
 // Pages & Widgets
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/home/my_reports.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/saved_article/saved_article.dart';
+import 'package:news_app_clean_architecture/core/constants/constants.dart';
 import '../../../domain/entities/article.dart';
 import '../../widgets/article_tile.dart';
 
-// Constantes de Categoría
-const List<String> kFilterCategories = [
-  'All', 'General', 'Workout', 'Nutrition', 'Mental Health', 'Gear', 'Events'
-];
 
 class DailyNews extends HookWidget {
   const DailyNews({Key? key}) : super(key: key);
@@ -273,7 +270,7 @@ class _FitnessNewsView extends HookWidget {
           Wrap(
             spacing: 8.0,
             runSpacing: 4.0,
-            children: kFilterCategories.map((category) {
+            children: ['All', ...kArticleCategories].map((category) {
               final isSelected = categoryFilter.value == category;
               return ChoiceChip(
                 label: Text(category),

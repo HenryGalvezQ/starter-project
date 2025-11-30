@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:news_app_clean_architecture/core/constants/constants.dart';
 import 'package:news_app_clean_architecture/features/daily_news/domain/entities/article.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_bloc.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_event.dart';
@@ -11,10 +12,6 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-
-const List<String> kArticleCategories = [
-  'General', 'Workout', 'Nutrition', 'Mental Health', 'Gear', 'Events'
-];
 
 class CreateArticleScreen extends HookWidget {
   final ArticleEntity? articleToEdit; // Si es null, es CREAR. Si tiene data, es EDITAR.
