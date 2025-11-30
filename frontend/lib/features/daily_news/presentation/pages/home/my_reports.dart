@@ -6,12 +6,14 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/my_articles/my_articles_state.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/create_article/create_article.dart';
 import '../../widgets/article_tile.dart';
+import '../../widgets/symmetry_logo.dart';
 
 class MyReports extends StatelessWidget {
   const MyReports({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // TRIGGER AUTOMÁTICO (Opcional): Si deseas sincronizar al abrir la pestaña
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
@@ -19,7 +21,17 @@ class MyReports extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Reports', style: TextStyle(color: Colors.black)),
+        // [NUEVO] Logo
+        leading: const SymmetryAppLogo(),
+        leadingWidth: 50,
+
+        title: Text(
+          'My Reports', 
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black,
+            fontWeight: FontWeight.bold
+          )
+        ),
         actions: [
           // BOTÓN DE SINCRONIZACIÓN MANUAL
           IconButton(
@@ -138,8 +150,8 @@ class MyReports extends StatelessWidget {
             MaterialPageRoute(builder: (context) => const CreateArticleScreen()),
           );
         },
-        backgroundColor: Colors.black87,
-        child: const Icon(Icons.add, color: Colors.white),
+        backgroundColor: isDark ? Colors.white : Colors.black87,
+        child: Icon(Icons.add, color: isDark ? Colors.black : Colors.white),
       ),
     );
   }

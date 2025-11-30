@@ -20,8 +20,9 @@ class CreateArticleScreen extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isEditing = articleToEdit != null;
-
+    
     // HOOKS: Pre-llenamos si estamos editando
     final titleController = useTextEditingController(text: articleToEdit?.title);
     final contentController = useTextEditingController(text: articleToEdit?.content);
@@ -47,9 +48,13 @@ class CreateArticleScreen extends HookWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? "Editar Reporte" : "Nuevo Reporte", style: const TextStyle(color: Colors.black)),
+        title: Text(
+          isEditing ? "Editar Reporte" : "Nuevo Reporte", 
+          style: TextStyle(color: isDark ? Colors.white : Colors.black)
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black),
+          // [FIX COLOR] Icono de cerrar dinámico
+          icon: Icon(Icons.close, color: isDark ? Colors.white : Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [

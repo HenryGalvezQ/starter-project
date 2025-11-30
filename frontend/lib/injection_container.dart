@@ -37,6 +37,8 @@ import 'package:news_app_clean_architecture/features/auth/domain/usecases/logout
 import 'package:news_app_clean_architecture/features/auth/domain/usecases/register_user.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 
+import 'package:news_app_clean_architecture/config/theme/theme_cubit.dart';
+
 final sl = GetIt.instance;
 
 
@@ -160,4 +162,6 @@ Future<void> initializeDependencies() async {
     )
   );
 
+  // Theme Cubit (Singleton porque guarda estado global)
+  sl.registerSingleton<ThemeCubit>(ThemeCubit());
 }

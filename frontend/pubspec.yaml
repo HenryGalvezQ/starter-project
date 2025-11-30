@@ -73,8 +73,10 @@ flutter:
 
   uses-material-design: true
 
- 
+  assets:
+    - assets/images/
   fonts:
+  
     - family: Muli
       fonts:
         - asset: assets/fonts/muli/Muli.ttf

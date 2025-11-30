@@ -31,41 +31,35 @@ import 'package:news_app_clean_architecture/core/constants/constants.dart';
 import '../../widgets/article_tile_shimmer.dart';
 import '../../../domain/entities/article.dart';
 import '../../widgets/article_tile.dart';
-
+import '../../widgets/symmetry_logo.dart';
 
 class DailyNews extends HookWidget {
   const DailyNews({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Detectamos el tema actual para ajustar colores
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     // Estado local para el índice del tab actual
     final tabIndex = useState(0);
 
     // [FIX SITUACIÓN 2 y 3] useEffect para Sync al abrir la App
-    // Esto se ejecuta una vez al montar el widget. Si ya hay sesión (persistencia), dispara el sync.
     useEffect(() {
-      // 1. Referencia al AuthBloc para verificar sesión
       final authBloc = context.read<AuthBloc>();
       
-      // Función auxiliar para sincronizar todo
       void triggerSync() {
         if (authBloc.state is Authenticated) {
           print("🚀 SYNC TRIGGER: Internet detectado o Inicio de App.");
-          // Carga la data local actual
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
-          // Intenta subir lo pendiente (Create/Update/Delete) y bajar novedades
           context.read<MyArticlesBloc>().add(const SyncMyArticles());
-          // Sincroniza favoritos y likes
           context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
         }
       }
 
-      // 2. Ejecutar Sync al abrir la app (Intento inicial)
       triggerSync();
 
-      // 3. SUSCRIPCIÓN A CAMBIOS DE CONEXIÓN (La magia automática)
       final subscription = Connectivity().onConnectivityChanged.listen((result) {
-        // Nota: connectivity_plus puede devolver una lista o un solo valor dependiendo la versión
         bool hasInternet = false;
         if (result is List) {
           hasInternet = !result.contains(ConnectivityResult.none);
@@ -79,32 +73,21 @@ class DailyNews extends HookWidget {
         }
       });
 
-      // Limpieza al cerrar el widget
       return subscription.cancel;
     }, []);
 
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, authState) {
         if (authState is Authenticated) {
-          // [FIX CRÍTICO AQUÍ]
           print("🔄 UI: Sesión iniciada. REHIDRATANDO DATOS...");
-          
-          // 1. Cargar lo que haya localmente (probablemente vacío al inicio)
           context.read<MyArticlesBloc>().add(const LoadMyArticles());
-          
-          // 2. [AGREGAR ESTA LÍNEA] Forzar descarga de la nube inmediatamente
           context.read<MyArticlesBloc>().add(const SyncMyArticles()); 
-          
-          // 3. Sincronizar Favoritos y Likes
           context.read<LocalArticleBloc>().add(const SyncLocalDatabase());
         } 
         else if (authState is Unauthenticated) {
-          // [FIX SITUACIÓN 4] Limpieza al cerrar sesión
           tabIndex.value = 0;
           print("🔒 UI: Sesión cerrada. Limpiando estado visual...");
-          // Limpiamos la RAM del Bloc Local para que no queden iconos activos
           context.read<LocalArticleBloc>().add(const ResetLocalState());
-          // Refrescamos el feed remoto
           context.read<RemoteArticlesBloc>().add(const GetArticles());
         }
       },
@@ -113,7 +96,6 @@ class DailyNews extends HookWidget {
 
         return MultiBlocListener(
           listeners: [
-            // Escuchar si la sincronización termina con éxito para refrescar feed
             BlocListener<MyArticlesBloc, MyArticlesState>(
               listener: (context, state) {
                  if (state is MyArticlesSyncSuccess) {
@@ -141,42 +123,41 @@ class DailyNews extends HookWidget {
                 tabIndex.value = index;
               },
               
-              backgroundColor: Colors.white,
+              // [FIX DARK MODE] Fondo Negro en Dark, Blanco en Light
+              backgroundColor: isDark ? Colors.black : Colors.white,
               type: BottomNavigationBarType.fixed,
               elevation: 0,
               
-              // CONFIGURACIÓN DE ETIQUETAS
-              showSelectedLabels: false, // Ocultamos la etiqueta default para dibujarla nosotros
+              showSelectedLabels: false, 
               showUnselectedLabels: true,
               
-              // TAMAÑOS
               selectedFontSize: 0, 
               unselectedFontSize: 11,
               
-              // COLORES
-              unselectedItemColor: Colors.black,
-              selectedItemColor: Colors.black, // Color base (aunque activeIcon lo sobrescribe)
+              unselectedItemColor: Colors.grey,
+              // El color base del seleccionado (aunque activeIcon lo sobrescribe)
+              selectedItemColor: isDark ? Colors.white : Colors.black, 
               
               items: [
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.fitness_center),
                   label: 'News',
-                  activeIcon: _buildActiveIcon(Icons.fitness_center, 'News'),
+                  activeIcon: _buildActiveIcon(Icons.fitness_center, 'News', isDark),
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.article_outlined),
                   label: 'Reports',
-                  activeIcon: _buildActiveIcon(Icons.article_outlined, 'Reports'),
+                  activeIcon: _buildActiveIcon(Icons.article_outlined, 'Reports', isDark),
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.bookmark_border),
                   label: 'Saved',
-                  activeIcon: _buildActiveIcon(Icons.bookmark, 'Saved'),
+                  activeIcon: _buildActiveIcon(Icons.bookmark, 'Saved', isDark),
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.person_outline),
                   label: 'Profile',
-                  activeIcon: _buildActiveIcon(Icons.person, 'Profile'),
+                  activeIcon: _buildActiveIcon(Icons.person, 'Profile', isDark),
                 ),
               ],
             ),
@@ -185,31 +166,31 @@ class DailyNews extends HookWidget {
       },
     );
   }
-  // Helper: Icono + Texto vertical dentro de una "Cápsula" negra
-  Widget _buildActiveIcon(IconData icon, String label) {
+
+  // Helper: Icono + Texto vertical dentro de una "Cápsula"
+  // [FIX DARK MODE] Agregamos parámetro isDark para invertir colores
+  Widget _buildActiveIcon(IconData icon, String label, bool isDark) {
     return Container(
-      // Ajustamos el padding: menos horizontal para que no sea tan ancho, 
-      // suficiente vertical para dar aire.
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       
-      // DECORACIÓN
       decoration: BoxDecoration(
-        color: Colors.black,
-        // [CLAVE] Un radio muy alto (50) fuerza bordes completamente circulares (Estadio/Píldora)
-        // Ya no parecerá un cuadrado redondeado.
+        // Fondo: Blanco en Dark, Negro en Light
+        color: isDark ? Colors.white : Colors.black,
         borderRadius: BorderRadius.circular(50), 
       ),
       
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center, // Asegura centrado vertical
+        mainAxisAlignment: MainAxisAlignment.center, 
         children: [
-          Icon(icon, color: Colors.white, size: 20), // Icono ligeramente más compacto
+          // Icono: Negro en Dark, Blanco en Light
+          Icon(icon, color: isDark ? Colors.black : Colors.white, size: 20), 
           const SizedBox(height: 2), 
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              // Texto: Negro en Dark, Blanco en Light
+              color: isDark ? Colors.black : Colors.white,
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -225,6 +206,8 @@ class _FitnessNewsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     // ESTADOS
     final isSearching = useState(false);
     final searchController = useTextEditingController();
@@ -234,7 +217,6 @@ class _FitnessNewsView extends HookWidget {
     final selectedCategory = useState<String>("All");
     final selectedSort = useState<SortOrder>(SortOrder.newest);
 
-    // Trigger Maestro
     void triggerUpdate() {
       context.read<RemoteArticlesBloc>().add(
         SearchArticles(
@@ -248,29 +230,32 @@ class _FitnessNewsView extends HookWidget {
 
     return Scaffold(
       appBar: AppBar(
+        // [NUEVO] Logo a la izquierda
+        leading: const SymmetryAppLogo(),
+        // Ajustamos el ancho del leading para que el logo quepa bien si es ancho
+        leadingWidth: 50,
+        // [FIX DARK MODE] Ajuste de colores en AppBar
         title: isSearching.value
             ? TextField(
                 controller: searchController,
                 autofocus: true,
-                style: const TextStyle(color: Colors.black),
-                decoration: InputDecoration(
-                  hintText: 'Buscar por ${selectedSearchFilter.value.name}...',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                decoration: const InputDecoration(
+                  hintText: 'Buscar...', // Simplificado
                   border: InputBorder.none,
-                  hintStyle: const TextStyle(color: Colors.grey),
+                  hintStyle: TextStyle(color: Colors.grey),
                 ),
                 onChanged: (query) => triggerUpdate(),
               )
-            : const Text('Fitness News', style: TextStyle(color: Colors.black)),
+            : Text('Fitness News', style: TextStyle(color: isDark ? Colors.white : Colors.black)),
         
         actions: [
           IconButton(
-            icon: Icon(isSearching.value ? Icons.close : Icons.search, color: Colors.black),
+            icon: Icon(isSearching.value ? Icons.close : Icons.search, color: isDark ? Colors.white : Colors.black),
             onPressed: () {
               if (isSearching.value) {
-                // RESET AL CERRAR BUSQUEDA (Opcional: puedes dejar los filtros activos si prefieres)
                 isSearching.value = false;
                 searchController.clear();
-                // selectedCategory.value = "All"; // Descomenta si quieres resetear categoria al cerrar buscar
                 triggerUpdate();
               } else {
                 isSearching.value = true;
@@ -283,11 +268,13 @@ class _FitnessNewsView extends HookWidget {
         children: [
           // CABECERA DE FILTROS Y ORDENAMIENTO
           _buildFiltersHeader(
+            context,
             isSearching.value, 
             selectedSearchFilter, 
             selectedCategory, 
             selectedSort, 
-            triggerUpdate
+            triggerUpdate,
+            isDark
           ),
           
           // LISTA DE ARTICULOS
@@ -298,38 +285,41 @@ class _FitnessNewsView extends HookWidget {
   }
 
   Widget _buildFiltersHeader(
+    BuildContext context,
     bool isSearching,
     ValueNotifier<SearchFilter> searchFilter,
     ValueNotifier<String> categoryFilter,
     ValueNotifier<SortOrder> sortFilter,
     VoidCallback onUpdate,
+    bool isDark,
   ) {
     return Container(
-      color: Colors.white,
+      // [FIX DARK MODE] Fondo del header adaptable
+      color: Theme.of(context).scaffoldBackgroundColor,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. FILTROS DE BÚSQUEDA (Solo visibles si se busca)
+          // 1. FILTROS DE BÚSQUEDA
           if (isSearching) ...[
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildChip(SearchFilter.all, "Todos", searchFilter, onUpdate),
+                  _buildChip(SearchFilter.all, "Todos", searchFilter, onUpdate, isDark),
                   const SizedBox(width: 8),
-                  _buildChip(SearchFilter.title, "Título", searchFilter, onUpdate),
+                  _buildChip(SearchFilter.title, "Título", searchFilter, onUpdate, isDark),
                   const SizedBox(width: 8),
-                  _buildChip(SearchFilter.author, "Autor", searchFilter, onUpdate),
+                  _buildChip(SearchFilter.author, "Autor", searchFilter, onUpdate, isDark),
                   const SizedBox(width: 8),
-                  _buildChip(SearchFilter.description, "Contenido", searchFilter, onUpdate),
+                  _buildChip(SearchFilter.description, "Contenido", searchFilter, onUpdate, isDark),
                 ],
               ),
             ),
             const SizedBox(height: 8),
           ],
 
-          // 2. CATEGORÍAS (Wrap para permitir salto de línea)
+          // 2. CATEGORÍAS
           Wrap(
             spacing: 8.0,
             runSpacing: 4.0,
@@ -344,14 +334,18 @@ class _FitnessNewsView extends HookWidget {
                     onUpdate();
                   }
                 },
-                selectedColor: Colors.black,
+                // [FIX DARK MODE] Inversión de colores para chips seleccionados
+                selectedColor: isDark ? Colors.white : Colors.black,
                 labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black,
+                  // Activo: Inverso al fondo. Inactivo: Normal.
+                  color: isSelected 
+                      ? (isDark ? Colors.black : Colors.white)
+                      : (isDark ? Colors.white : Colors.black),
                   fontSize: 12
                 ),
-                backgroundColor: Colors.grey[200],
+                // Fondo inactivo
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                // Visualmente compactos
                 visualDensity: VisualDensity.compact, 
               );
             }).toList(),
@@ -359,7 +353,7 @@ class _FitnessNewsView extends HookWidget {
 
           const SizedBox(height: 8),
 
-          // 3. ORDENAMIENTO (Dropdown)
+          // 3. ORDENAMIENTO
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -370,13 +364,15 @@ class _FitnessNewsView extends HookWidget {
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
+                  color: isDark ? Colors.grey[900] : Colors.white, // Fondo del dropdown container
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<SortOrder>(
                     value: sortFilter.value,
                     isDense: true,
-                    icon: const Icon(Icons.sort, size: 18),
-                    style: const TextStyle(color: Colors.black, fontSize: 13),
+                    icon: Icon(Icons.sort, size: 18, color: isDark ? Colors.white : Colors.black),
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 13),
+                    dropdownColor: isDark ? Colors.grey[900] : Colors.white,
                     items: const [
                       DropdownMenuItem(value: SortOrder.newest, child: Text("Más Recientes")),
                       DropdownMenuItem(value: SortOrder.oldest, child: Text("Más Antiguos")),
@@ -404,7 +400,8 @@ class _FitnessNewsView extends HookWidget {
     SearchFilter filter, 
     String label, 
     ValueNotifier<SearchFilter> currentFilter,
-    VoidCallback onUpdate
+    VoidCallback onUpdate,
+    bool isDark
   ) {
     final bool isSelected = currentFilter.value == filter;
     return ChoiceChip(
@@ -416,9 +413,15 @@ class _FitnessNewsView extends HookWidget {
           onUpdate();
         }
       },
-      selectedColor: Colors.blueGrey,
-      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 12),
-      backgroundColor: Colors.white,
+      // [FIX DARK MODE]
+      selectedColor: isDark ? Colors.white : Colors.blueGrey,
+      labelStyle: TextStyle(
+          color: isSelected 
+              ? (isDark ? Colors.black : Colors.white) 
+              : (isDark ? Colors.white : Colors.black), 
+          fontSize: 12
+      ),
+      backgroundColor: isDark ? Colors.grey[800] : Colors.white,
       shape: const StadiumBorder(side: BorderSide(color: Colors.grey)),
       visualDensity: VisualDensity.compact,
     );
@@ -428,7 +431,6 @@ class _FitnessNewsView extends HookWidget {
     return BlocBuilder<RemoteArticlesBloc, RemoteArticlesState>(
       builder: (context, remoteState) {
         if (remoteState is RemoteArticlesLoading) {
-          // Mostramos 5 esqueletos falsos para dar sensación de velocidad
           return ListView.builder(
             itemCount: 5,
             itemBuilder: (_, __) => const ArticleTileShimmer(),
@@ -450,7 +452,6 @@ class _FitnessNewsView extends HookWidget {
                 likedArticles = localState.likedArticles ?? [];
               }
 
-              // MENSAJE SI NO HAY RESULTADOS
               if (remoteState.articles!.isEmpty) {
                 return const Center(child: Text("No se encontraron resultados"));
               }
@@ -513,6 +514,10 @@ class _FitnessNewsView extends HookWidget {
           isLiked: isLiked,  
         );
 
+        // [FIX FINAL] 
+        // ELIMINAMOS EL CONTAINER BLANCO EXTERNO.
+        // Devolvemos el ArticleWidget directamente.
+        // Ahora los márgenes del widget dejarán ver el fondo (negro o blanco) del Scaffold.
         return ArticleWidget(
           key: ValueKey("${remoteArticle.url}_${isSaved}_${isLiked}"),
           article: displayArticle,
@@ -553,6 +558,4 @@ class _FitnessNewsView extends HookWidget {
   void _onArticlePressed(BuildContext context, ArticleEntity article) {
     Navigator.pushNamed(context, '/ArticleDetails', arguments: article);
   }
-
-  
 }

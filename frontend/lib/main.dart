@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'package:news_app_clean_architecture/config/routes/routes.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/pages/home/daily_news.dart';
 import 'config/theme/app_themes.dart';
+import 'config/theme/theme_cubit.dart';
 import 'features/daily_news/presentation/bloc/article/remote/remote_article_bloc.dart';
 import 'features/daily_news/presentation/bloc/article/remote/remote_article_event.dart';
 import 'features/daily_news/presentation/bloc/article/local/local_article_bloc.dart'; // Importante
@@ -47,12 +48,23 @@ class MyApp extends StatelessWidget {
         BlocProvider<MyArticlesBloc>(
           create: (context) => sl()..add(const LoadMyArticles()),
         ),
+        BlocProvider<ThemeCubit>(create: (context) => sl<ThemeCubit>()),
       ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: theme(),
-        onGenerateRoute: AppRoutes.onGenerateRoutes,
-        home: const DailyNews(),
+      // Builder que reconstruye la app al cambiar el tema
+      child: BlocBuilder<ThemeCubit, ThemeMode>(
+        builder: (context, themeMode) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            
+            // CONFIGURACIÓN DE TEMAS
+            theme: AppTheme.light,       // Tema Claro
+            darkTheme: AppTheme.dark,    // Tema Oscuro
+            themeMode: themeMode,        // El Cubit decide cuál usar
+            
+            onGenerateRoute: AppRoutes.onGenerateRoutes,
+            home: const DailyNews(),
+          );
+        },
       ),
     );
   }

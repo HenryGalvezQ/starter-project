@@ -7,6 +7,7 @@ import 'package:news_app_clean_architecture/features/daily_news/presentation/blo
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_event.dart';
 import 'package:news_app_clean_architecture/features/daily_news/presentation/bloc/article/local/local_article_state.dart';
 import '../../widgets/article_tile.dart';
+import '../../widgets/symmetry_logo.dart';
 
 class SavedArticles extends HookWidget {
   const SavedArticles({Key? key}) : super(key: key);
@@ -20,8 +21,19 @@ class SavedArticles extends HookWidget {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return AppBar(
-      title: const Text('Saved Articles', style: TextStyle(color: Colors.black)),
+      // [NUEVO] Logo
+      leading: const SymmetryAppLogo(),
+      leadingWidth: 50,
+      title: Text(
+        'Saved Articles', 
+        style: TextStyle(
+          color: isDark ? Colors.white : Colors.black,
+          fontWeight: FontWeight.bold
+        )
+      ),
     );
   }
 

@@ -3,80 +3,77 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/domain/entities/user.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:news_app_clean_architecture/features/auth/presentation/bloc/auth_event.dart';
+import '../../../../../config/theme/theme_cubit.dart'; // <--- IMPORTANTE: Importar el Cubit
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends StatelessWidget {
   final UserEntity user;
   const ProfileScreen({Key? key, required this.user}) : super(key: key);
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
-}
-
-class _ProfileScreenState extends State<ProfileScreen> {
-  // Estado local temporal para el switch (luego lo conectaremos al ThemeCubit)
-  bool _isDarkMode = false; 
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Mi Perfil", style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            
-            // 1. AVATAR MEJORADO
-            _buildProfileHeader(),
-            
-            const SizedBox(height: 40),
+    // Escuchamos el tema actual para reconstruir la pantalla cuando cambie
+    return BlocBuilder<ThemeCubit, ThemeMode>(
+      builder: (context, themeMode) {
+        final isDark = themeMode == ThemeMode.dark;
 
-            // 2. OPCIONES DE CONFIGURACIÓN
-            _buildSettingsSection(),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text("Mi Perfil"), // El estilo ya viene del AppTheme (Negro o Blanco)
+            // Quitamos backgroundColor hardcoded para que use el del tema
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                
+                // 1. AVATAR
+                _buildProfileHeader(context, isDark),
+                
+                const SizedBox(height: 40),
 
-            const SizedBox(height: 40),
+                // 2. OPCIONES (Pasamos isDark para ajustar el color del contenedor)
+                _buildSettingsSection(context, isDark),
 
-            // 3. BOTÓN CERRAR SESIÓN
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  context.read<AuthBloc>().add(AuthLogout());
-                },
-                icon: const Icon(Icons.logout, color: Colors.white),
-                label: const Text("CERRAR SESIÓN", style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)
-                  )
+                const SizedBox(height: 40),
+
+                // 3. BOTÓN CERRAR SESIÓN
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      context.read<AuthBloc>().add(AuthLogout());
+                    },
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    label: const Text("CERRAR SESIÓN", style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)
+                      )
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildProfileHeader() {
-    // Si tuviéramos photoURL en la entidad UserEntity, lo usaríamos aquí.
-    // Por ahora, usamos un diseño limpio con las iniciales.
-    final String initial = widget.user.displayName != null && widget.user.displayName!.isNotEmpty
-        ? widget.user.displayName![0].toUpperCase()
+  Widget _buildProfileHeader(BuildContext context, bool isDark) {
+    final String initial = user.displayName != null && user.displayName!.isNotEmpty
+        ? user.displayName![0].toUpperCase()
         : "U";
 
     return Column(
       children: [
         CircleAvatar(
           radius: 60,
-          backgroundColor: Colors.black87,
+          // En modo oscuro, el avatar resalta mejor en blanco o gris claro
+          backgroundColor: isDark ? Colors.grey[800] : Colors.black87,
           child: Text(
             initial,
             style: const TextStyle(fontSize: 40, color: Colors.white, fontWeight: FontWeight.bold),
@@ -84,59 +81,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 20),
         
-        // DISPLAY NAME (Requerimiento 11.1)
         Text(
-          widget.user.displayName ?? "Usuario Symmetry",
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          user.displayName ?? "Usuario Symmetry",
+          // Usamos el estilo del cuerpo, el color se ajusta solo (Negro en Light, Blanco en Dark)
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: 24
+          ),
         ),
         
         const SizedBox(height: 8),
         
-        // EMAIL
         Text(
-          widget.user.email ?? "No Email",
+          user.email ?? "No Email",
           style: const TextStyle(fontSize: 16, color: Colors.grey),
         ),
-        // [ELIMINADO] UID crudo para cumplir con el requerimiento de UX
       ],
     );
   }
 
-  Widget _buildSettingsSection() {
+  Widget _buildSettingsSection(BuildContext context, bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        // [CLAVE] Color dinámico: Gris claro en Light, Gris oscuro en Dark
+        color: isDark ? Colors.grey[900] : Colors.grey[100],
         borderRadius: BorderRadius.circular(16),
+        // En dark mode agregamos un borde sutil para separar del fondo negro
+        border: isDark ? Border.all(color: Colors.grey[800]!) : null,
       ),
       child: Column(
         children: [
-          // SWITCH MODO OSCURO (Visual por ahora)
+          // SWITCH MODO OSCURO (CONECTADO)
           SwitchListTile(
             title: const Text("Modo Oscuro"),
             secondary: Icon(
-              _isDarkMode ? Icons.dark_mode : Icons.light_mode,
-              color: Colors.black87
+              isDark ? Icons.dark_mode : Icons.light_mode,
+              // El icono se adapta al color del texto del tema
+              color: Theme.of(context).iconTheme.color
             ),
-            value: _isDarkMode,
-            activeColor: Colors.black,
+            value: isDark,
+            activeColor: Colors.white, // Switch blanco cuando está activo (Dark)
+            activeTrackColor: Colors.grey,
             onChanged: (bool value) {
-              setState(() {
-                _isDarkMode = value;
-              });
-              // TODO: Conectar con ThemeCubit en la siguiente tarea
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Próximamente: Cambio de tema global"),
-                  duration: Duration(milliseconds: 500),
-                )
-              );
+              // LLAMADA AL CUBIT: Esto guarda y cambia el tema globalmente
+              context.read<ThemeCubit>().toggleTheme(value);
             },
           ),
           
-          const Divider(height: 1),
+          Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
           ListTile(
-            leading: const Icon(Icons.info_outline, color: Colors.black87),
+            leading: Icon(Icons.info_outline, color: Theme.of(context).iconTheme.color),
             title: const Text("Versión de la App"),
             trailing: const Text("1.0.0", style: TextStyle(color: Colors.grey)),
           ),

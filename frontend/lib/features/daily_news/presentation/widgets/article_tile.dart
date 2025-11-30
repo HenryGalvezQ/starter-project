@@ -31,18 +31,31 @@ class ArticleWidget extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    // HOOKS: Estados locales para reactividad inmediata
-    // Inicializamos con los valores que vienen del Bloc (Base de Datos)
     final isLiked = useState(isLikedInitially); 
     final isSaved = useState(isSavedInitially);
-    
-    // Inicializamos el contador con el valor del modelo
     final likeCount = useState(article!.likesCount ?? 0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _onTap,
       child: Container(
+        // [SOLUCIÓN]
+        // Vertical: 12.0 -> Esto crea la separación negra visible entre tarjetas.
+        // Horizontal: 6.0 -> Mantenemos bajo para que no explote el texto (Overflow).
+        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        
+        decoration: BoxDecoration(
+          color: Colors.white, // Fondo de la tarjeta
+          borderRadius: BorderRadius.circular(20), // Bordes bien redondeados
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              offset: const Offset(0, 4),
+              blurRadius: 10, // Sombra suave para dar efecto 3D
+            )
+          ],
+        ),
+        
         padding: const EdgeInsetsDirectional.only(
             start: 14, end: 14, bottom: 7, top: 7),
         height: MediaQuery.of(context).size.width / 2.1,

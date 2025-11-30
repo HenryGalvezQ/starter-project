@@ -14,35 +14,39 @@ class ArticleDetailsView extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // HOOKS: Inicializamos con el estado que viene del Feed (Sincronización visual)
     final isSaved = useState(article!.isSaved ?? false);
     final isLiked = useState(article!.isLiked ?? false); 
     final likeCount = useState(article!.likesCount ?? 0);
 
     return Scaffold(
-      appBar: _buildAppBar(context),
-      body: _buildBody(context, isLiked, likeCount),
+      appBar: _buildAppBar(context, isDark),
+      body: _buildBody(context, isLiked, likeCount, isDark),
       floatingActionButton: _buildFloatingActionButton(context, isSaved),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, bool isDark) {
     return AppBar(
+      // [FIX] El fondo se adapta al tema (Negro/Blanco), pero el icono debe contrastar
       leading: Builder(
         builder: (context) => GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _onBackButtonTapped(context),
-          child: const Icon(Ionicons.chevron_back, color: Colors.black),
+          // Icono Blanco en Dark Mode, Negro en Light Mode
+          child: Icon(Ionicons.chevron_back, color: isDark ? Colors.white : Colors.black),
         ),
       ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // Transparencia visual
     );
   }
 
-  Widget _buildBody(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount) {
+  Widget _buildBody(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount, bool isDark) {
     return SingleChildScrollView(
       child: Column(
         children: [
-          _buildArticleTitleAndDate(context, isLiked, likeCount),
+          _buildArticleTitleAndDate(context, isLiked, likeCount, isDark),
           _buildArticleImage(),
           _buildArticleDescription(),
         ],
@@ -50,7 +54,7 @@ class ArticleDetailsView extends HookWidget {
     );
   }
 
-  Widget _buildArticleTitleAndDate(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount) {
+  Widget _buildArticleTitleAndDate(BuildContext context, ValueNotifier<bool> isLiked, ValueNotifier<int> likeCount, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22),
       child: Column(
@@ -138,7 +142,12 @@ class ArticleDetailsView extends HookWidget {
                     },
                     child: Icon(
                       isLiked.value ? Ionicons.thumbs_up : Ionicons.thumbs_up_outline,
-                      color: isLiked.value ? Colors.blue : Colors.black,
+                      // [FIX] Lógica de Color del Like:
+                      // - Si tiene like (Activo) -> Azul (igual en ambos temas)
+                      // - Si NO tiene like (Inactivo) -> Blanco en Dark, Negro en Light
+                      color: isLiked.value 
+                          ? Colors.blue 
+                          : (isDark ? Colors.white : Colors.black),
                       size: 24,
                     ),
                   ),
@@ -179,7 +188,11 @@ class ArticleDetailsView extends HookWidget {
         article!.content != null && article!.content!.isNotEmpty 
             ? article!.content! 
             : article!.description ?? '',
-        style: const TextStyle(fontSize: 16),
+        textAlign: TextAlign.justify,
+        style: TextStyle(
+          fontSize: 16,
+          height: 1.5,
+        ),
       ),
     );
   }
